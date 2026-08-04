@@ -29,6 +29,7 @@ describe('fast planner', () => {
     const project = createBlankProject();
     project.story = '測試';
     project.scenes = createFastPlan(project).scenes;
+    project.settings.visualMode = 'cards';
     const comic = estimateRange(project, 4096);
     expect(comic[0]).toBeLessThan(10);
     project.settings.quality = 'cinema';
