@@ -3,6 +3,8 @@ name: Publish signed Windows installer
 on:
   workflow_dispatch:
   push:
+    branches:
+      - "publish"
     tags:
       - "v*"
 
@@ -16,7 +18,7 @@ concurrency:
 jobs:
   publish-windows:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
 
     steps:
       - name: Check out source
@@ -44,6 +46,12 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Synchronize release version and Rust lockfile
+        shell: pwsh
+        run: |
+          python scripts/sync-release-version.py
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+
       - name: Install exact frontend dependencies
         shell: pwsh
         run: npm ci
@@ -58,13 +66,17 @@ jobs:
         shell: pwsh
         run: npm test
 
+      - name: Compile and test Tauri commands
+        shell: pwsh
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
       - name: Build and test bundled Engine
         shell: pwsh
         run: ./scripts/build-engine.ps1
 
-      - name: Refresh Rust lockfile for release dependencies
+      - name: Generate final monochrome Windows icons
         shell: pwsh
-        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+        run: python scripts/generate_icons.py
 
       - name: Build, sign and publish NSIS update
         uses: tauri-apps/tauri-action@v1
@@ -75,8 +87,9 @@ jobs:
           tagName: v__VERSION__
           releaseName: Evolabs Agent Studio v__VERSION__
           releaseBody: |
-            Evolabs Agent Studio signed Windows release.
-            Install the Setup.exe once; later releases can be installed from inside Evolabs.
+            Evolabs Agent Studio v0.7 introduces a reliable script-to-screenwriter flow,
+            a restrained professional interface, selectable local Agent models,
+            clearer Runtime/model diagnostics, and a rebuilt monochrome identity.
           releaseDraft: false
           prerelease: false
           generateReleaseNotes: true
