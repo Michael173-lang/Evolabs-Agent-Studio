@@ -48,6 +48,7 @@ function extractNarrativeNames(story: string): string[] {
     /(?:名叫|叫做|叫|人物是|主角是)\s*([\p{Script=Han}A-Za-z][\p{Script=Han}A-Za-z0-9·]{0,11})/gu,
     /([\p{Script=Han}]{2,4})\s*(?:和|與|跟)\s*([\p{Script=Han}]{2,4})/gu,
     /([A-Z][A-Za-z]{1,11})\s*(?:and|with|&|和|與)\s*([A-Z][A-Za-z]{1,11})/gu,
+    /(?:^|[。！？!?]\s*)([\p{Script=Han}]{2,4})(?=(?:抬頭|低頭|看見|望向|轉身|走近|走向|跑向|說|問|喊|拿起|按下|打開|關上|停下|退到|站在|坐在|伸手|發現|突然))/gu,
   ];
   for (const pattern of patterns) {
     for (const match of story.matchAll(pattern)) {
