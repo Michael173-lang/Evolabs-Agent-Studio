@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.7.0"
 SHA256 = "ca10b6e443fb34fdb9f23a25854629d5085fde59c11c2d0f3e0a78bac9128e00"
 PARTS = ROOT / "scripts" / ".v070-payload"
+# This marker intentionally retriggers the branch materialization workflow.
 
 
 def main() -> int:
