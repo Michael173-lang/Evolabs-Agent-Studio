@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.7.0"
 SHA256 = "220320fb5dff3beccdfe415fcc063431fa70e25684bb772b45a555221b7ca0ed"
 PARTS = ROOT / "scripts" / ".v070-payload"
+WORKFLOW_PATH = ".github/workflows/windows-installer.yml"
 
 
 def main() -> int:
@@ -26,6 +27,9 @@ def main() -> int:
             f"actual={actual_sha256}, files={len(decoded)}"
         )
     files = json.loads(raw.decode("utf-8"))
+    # GitHub's workflow token cannot modify workflow files. The connected
+    # publisher applies this verified file separately after materialization.
+    files.pop(WORKFLOW_PATH, None)
     for relative, content in files.items():
         target = ROOT / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -36,8 +40,7 @@ def main() -> int:
     subprocess.run([sys.executable, "-m", "py_compile", str(ROOT / "scripts" / "sync-release-version.py"), str(ROOT / "scripts" / "generate_icons.py")], cwd=ROOT, check=True)
 
     shutil.rmtree(PARTS, ignore_errors=True)
-    for temporary in (ROOT / "scripts" / "materialize-v070.py", ROOT / ".github" / "workflows" / "materialize-v070.yml"):
-        temporary.unlink(missing_ok=True)
+    (ROOT / "scripts" / "materialize-v070.py").unlink(missing_ok=True)
     print("Evolabs v0.7.0 source materialization complete.")
     return 0
 
