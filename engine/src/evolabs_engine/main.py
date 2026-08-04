@@ -21,7 +21,22 @@ def default_data_root() -> Path:
     return base / "Evolabs" / "engine"
 
 
+def _configure_utf8_stdio() -> None:
+    # A bundled PyInstaller executable inherits the active Windows console code
+    # page. GitHub-hosted Windows runners may expose cp1252, which cannot encode
+    # the Chinese JSON returned by the health check. Force UTF-8 at the process
+    # boundary so CLI JSON and diagnostics remain valid on every Windows locale.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="backslashreplace")
+            except (OSError, ValueError):
+                pass
+
+
 def main() -> int:
+    _configure_utf8_stdio()
     parser = argparse.ArgumentParser(description="Evolabs local engine")
     parser.add_argument("--data-root", type=Path, default=default_data_root())
     parser.add_argument("--health-check", action="store_true")
@@ -70,8 +85,6 @@ def main() -> int:
             "functionalCoreReady": False,
         }
         try:
-            # The UI gates zhVoice on this exact result, so health performs the
-            # actual SAPI culture probe instead of assuming PowerShell implies a voice.
             info = runtime_info(probe_voice=True)
             capability_environment = dict(os.environ)
             capability_environment.setdefault("EVOLABS_FFMPEG", str(info.ffmpeg))
@@ -100,7 +113,7 @@ def main() -> int:
                     environment=os.environ,
                 )
             )
-        print(json.dumps({"id": "health", "ok": True, "result": result}, ensure_ascii=False))
+        print(json.dumps({"id": "health", "ok": True, "result": result}, ensure_ascii=False), flush=True)
         return 0
 
     engine = EngineProtocol(arguments.data_root)
