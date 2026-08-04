@@ -62,6 +62,10 @@ jobs:
         shell: pwsh
         run: ./scripts/build-engine.ps1
 
+      - name: Refresh Rust lockfile for release dependencies
+        shell: pwsh
+        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+
       - name: Build, sign and publish NSIS update
         uses: tauri-apps/tauri-action@v1
         env:
@@ -78,7 +82,7 @@ jobs:
           generateReleaseNotes: true
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
-          args: --bundles nsis --target x86_64-pc-windows-msvc --ci -- --locked
+          args: --bundles nsis --target x86_64-pc-windows-msvc --ci
 
       - name: Keep Windows installer as workflow artifact
         uses: actions/upload-artifact@v4
