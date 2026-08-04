@@ -1,0 +1,79 @@
+name: Validate Evolabs v0.7.0
+
+on:
+  push:
+    branches:
+      - "release/v0.7.0-ui-reliability"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evolabs-v070-quality
+  cancel-in-progress: true
+
+jobs:
+  validate-windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Set up Python 3.11 x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+
+      - name: Install Rust stable MSVC
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Synchronize version and lockfile
+        shell: pwsh
+        run: |
+          python scripts/sync-release-version.py 0.7.0
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+
+      - name: Install exact frontend dependencies
+        shell: pwsh
+        run: npm ci
+
+      - name: Validate release source
+        shell: pwsh
+        run: python scripts/validate-source-release.py
+
+      - name: Type-check frontend
+        shell: pwsh
+        run: npm run check
+
+      - name: Run frontend tests
+        shell: pwsh
+        run: npm test
+
+      - name: Compile and test Tauri commands
+        shell: pwsh
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Build and test bundled Engine
+        shell: pwsh
+        run: ./scripts/build-engine.ps1
+
+      - name: Generate final monochrome icons
+        shell: pwsh
+        run: python scripts/generate_icons.py
