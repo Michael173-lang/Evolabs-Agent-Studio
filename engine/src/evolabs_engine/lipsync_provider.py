@@ -34,7 +34,10 @@ REQUIRED_HELP_OPTIONS = (
 )
 MINIMUM_VRAM_MB = 3800
 MAX_SCENE_SECONDS_4GB = 30.0
-SAFE_UPSTREAM_PATH = re.compile(r"^[A-Za-z0-9_./:\\\-]+$")
+# Windows CI and some local profiles use DOS 8.3 components such as
+# RUNNER~1. Tilde is not a shell metacharacter and is safe for the fixed,
+# internally generated MuseTalk work paths.
+SAFE_UPSTREAM_PATH = re.compile(r"^[A-Za-z0-9_./:\\\-~]+$")
 
 
 class LipSyncProviderError(RuntimeError):
@@ -79,80 +82,46 @@ class LipSyncCapability:
         return self.status == "ready"
 
 
-class LocalLipSyncProvider(ABC):
-    provider_id: str
-    display_name: str
+class LipSyncProvider(ABC):
+    provider_id = "base"
+    display_name = "Base lip-sync provider"
 
     @abstractmethod
     def probe(self) -> LipSyncCapability:
-        """Inspect the configured local runtime without loading model weights."""
+        raise NotImplementedError
 
     @abstractmethod
     def generate(self, request: LipSyncRequest, destination: Path) -> LipSyncResult:
-        """Generate and validate one single-subject lip-synced scene."""
-
-
-def _option_present(help_text: str, option: str) -> bool:
-    return re.search(rf"(?<![\w-]){re.escape(option)}(?![\w-])", help_text) is not None
+        raise NotImplementedError
 
 
 def _safe_existing_file(path: Path, label: str) -> None:
-    if not path.is_file():
+    if not path.exists() or not path.is_file():
         raise LipSyncProviderError("LIPSYNC_INPUT_MISSING", f"{label}不存在。", str(path))
-    if path.stat().st_size <= 0:
-        raise LipSyncProviderError("LIPSYNC_INPUT_EMPTY", f"{label}是空檔案。", str(path))
+    if path.is_symlink():
+        raise LipSyncProviderError("LIPSYNC_INPUT_UNSAFE", f"{label}不可使用符號連結。", str(path))
 
 
-def _validate_mp4(source: Path, destination: Path) -> None:
-    if not source.is_file() or source.stat().st_size < 32:
-        raise LipSyncProviderError("LIPSYNC_OUTPUT_MISSING", "唇同步執行器沒有產生影片。", str(source))
+def _contains_mp4_ftyp(path: Path) -> bool:
     try:
-        with source.open("rb") as handle:
-            header = handle.read(64)
-    except OSError as error:
-        raise LipSyncProviderError("LIPSYNC_OUTPUT_INVALID", "無法讀取唇同步輸出。", str(error)) from error
-    if len(header) < 12 or header[4:8] != b"ftyp":
-        raise LipSyncProviderError("LIPSYNC_OUTPUT_INVALID", "唇同步輸出不是有效的 MP4 容器。", str(source))
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{destination.stem}-", suffix=".mp4.partial", dir=destination.parent
-    )
-    os.close(descriptor)
-    temporary = Path(temporary_name)
-    try:
-        shutil.copyfile(source, temporary)
-        os.replace(temporary, destination)
-    finally:
-        temporary.unlink(missing_ok=True)
+        data = path.read_bytes()[:64]
+    except OSError:
+        return False
+    return len(data) >= 8 and data[4:8] == b"ftyp"
 
 
-class MuseTalk15Provider(LocalLipSyncProvider):
-    """Bring-your-own MuseTalk 1.5 adapter for a verified local checkout.
-
-    Evolabs deliberately does not download this runtime: MuseTalk depends on a
-    collection of third-party checkpoints with separate licenses and upstream
-    does not publish one atomic, versioned Windows bundle with a complete hash
-    manifest.  A provider is therefore ready only after the caller points it at
-    a fully installed local checkout and the official CLI can describe every
-    option Evolabs relies on.
-    """
-
-    provider_id = "musetalk-1.5-local"
-    display_name = "MuseTalk 1.5（本機自備）"
+class MuseTalk15Provider(LipSyncProvider):
+    provider_id = "musetalk-1.5"
+    display_name = "MuseTalk 1.5"
 
     _required_files = (
         "scripts/inference.py",
         "models/musetalkV15/unet.pth",
         "models/musetalkV15/musetalk.json",
-        "models/whisper/config.json",
         "models/whisper/pytorch_model.bin",
-        "models/whisper/preprocessor_config.json",
-        "models/sd-vae/config.json",
-        "models/sd-vae/diffusion_pytorch_model.bin",
-        "models/dwpose/dw-ll_ucoco_384.pth",
-        "models/face-parse-bisent/79999_iter.pth",
-        "models/face-parse-bisent/resnet18-5c106cde.pth",
+        "models/whisper/config.json",
+        "models/vae/diffusion_pytorch_model.bin",
+        "models/vae/config.json",
     )
 
     def __init__(
@@ -162,8 +131,8 @@ class MuseTalk15Provider(LocalLipSyncProvider):
         ffmpeg_executable: Path | None,
         *,
         cuda_available: bool,
-        vram_mb: int | None,
-        generation_timeout: float = 45 * 60,
+        vram_mb: int,
+        generation_timeout: float = 180.0,
         cancel_requested: Callable[[], bool] | None = None,
         gpu_lock_path: Path | None = None,
     ) -> None:
@@ -177,95 +146,68 @@ class MuseTalk15Provider(LocalLipSyncProvider):
         self.gpu_lock_path = gpu_lock_path
         self._capability: LipSyncCapability | None = None
 
-    @classmethod
-    def from_environment(
-        cls,
-        environment: Mapping[str, str],
-        *,
-        cuda_available: bool,
-        vram_mb: int | None,
-        cancel_requested: Callable[[], bool] | None = None,
-        gpu_lock_path: Path | None = None,
-    ) -> MuseTalk15Provider:
-        def configured_path(name: str) -> Path | None:
-            value = str(environment.get(name) or "").strip()
-            return Path(value).expanduser() if value else None
-
-        return cls(
-            configured_path("EVOLABS_MUSETALK_PYTHON"),
-            configured_path("EVOLABS_MUSETALK_ROOT"),
-            configured_path("EVOLABS_FFMPEG"),
-            cuda_available=cuda_available,
-            vram_mb=vram_mb,
-            cancel_requested=cancel_requested,
-            gpu_lock_path=gpu_lock_path,
-        )
-
-    def _hardware_gate(self) -> LipSyncCapability | None:
-        details = {"minimumVramMb": MINIMUM_VRAM_MB, "detectedVramMb": self.vram_mb}
-        if not self.cuda_available:
-            return LipSyncCapability(
-                self.provider_id,
-                self.display_name,
-                "unavailable",
-                "MuseTalk 在 Evolabs 中只允許使用 NVIDIA CUDA；CPU 模式已停用。",
-                version="1.5",
-                details=details,
-            )
-        if self.vram_mb is None or self.vram_mb < MINIMUM_VRAM_MB:
-            return LipSyncCapability(
-                self.provider_id,
-                self.display_name,
-                "unavailable",
-                "MuseTalk 1.5 至少需要約 4GB 可用顯存；目前硬體未通過安全閘門。",
-                version="1.5",
-                details=details,
-            )
-        return None
+    def _base_details(self) -> dict[str, Any]:
+        return {
+            "managedInstall": bool(self.repository_root),
+            "cuda": self.cuda_available,
+            "vramMb": self.vram_mb,
+            "minimumVramMb": MINIMUM_VRAM_MB,
+            "singleSubjectOnly": True,
+            "precision": "fp16",
+            "batchSize": 1,
+            "fps": 25,
+            "maxSceneSeconds": MAX_SCENE_SECONDS_4GB,
+        }
 
     def probe(self) -> LipSyncCapability:
-        gated = self._hardware_gate()
-        if gated is not None:
-            self._capability = gated
-            return gated
-
-        details: dict[str, Any] = {
-            "minimumVramMb": MINIMUM_VRAM_MB,
-            "detectedVramMb": self.vram_mb,
-            "singleSubjectOnly": True,
-            "maxSceneSecondsAt4Gb": MAX_SCENE_SECONDS_4GB,
-            "managedInstall": False,
-        }
-        if self.python_executable is None or self.repository_root is None or self.ffmpeg_executable is None:
+        details = self._base_details()
+        if not self.cuda_available:
+            capability = LipSyncCapability(
+                self.provider_id,
+                self.display_name,
+                "unavailable",
+                "MuseTalk 需要 NVIDIA CUDA 顯示卡。",
+                version="1.5",
+                details=details,
+            )
+            self._capability = capability
+            return capability
+        if self.vram_mb < MINIMUM_VRAM_MB:
+            capability = LipSyncCapability(
+                self.provider_id,
+                self.display_name,
+                "unavailable",
+                f"MuseTalk 需要至少 {MINIMUM_VRAM_MB} MB 可用顯存。",
+                version="1.5",
+                details=details,
+            )
+            self._capability = capability
+            return capability
+        if not self.python_executable or not self.repository_root or not self.ffmpeg_executable:
             capability = LipSyncCapability(
                 self.provider_id,
                 self.display_name,
                 "missing",
-                "尚未設定本機 MuseTalk 1.5、Python 與 FFmpeg 路徑。",
+                "MuseTalk 執行環境尚未安裝。",
                 version="1.5",
                 details=details,
             )
             self._capability = capability
             return capability
 
-        missing = []
+        missing = [relative for relative in self._required_files if not (self.repository_root / relative).is_file()]
         if not self.python_executable.is_file():
             missing.append(str(self.python_executable))
         if not self.ffmpeg_executable.is_file():
             missing.append(str(self.ffmpeg_executable))
-        if not self.repository_root.is_dir():
-            missing.append(str(self.repository_root))
-        else:
-            missing.extend(str(self.repository_root / item) for item in self._required_files if not (self.repository_root / item).is_file())
         if missing:
-            details["missing"] = missing
             capability = LipSyncCapability(
                 self.provider_id,
                 self.display_name,
                 "missing",
-                "本機 MuseTalk 1.5 安裝不完整。",
+                "MuseTalk 執行環境不完整。",
                 version="1.5",
-                details=details,
+                details={**details, "missing": missing},
             )
             self._capability = capability
             return capability
@@ -273,30 +215,44 @@ class MuseTalk15Provider(LocalLipSyncProvider):
         try:
             result = run_cancellable(
                 [str(self.python_executable), "-m", "scripts.inference", "--help"],
+                cwd=self.repository_root,
                 timeout=30,
                 cancel_requested=self.cancel_requested,
-                cwd=self.repository_root,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PYTHONUTF8": "1"},
             )
-        except (OSError, subprocess.TimeoutExpired, ProcessCanceled) as error:
+        except ProcessCanceled:
             capability = LipSyncCapability(
                 self.provider_id,
                 self.display_name,
                 "invalid",
-                "MuseTalk CLI 健康檢查失敗。",
+                "MuseTalk 健康檢查已取消。",
                 version="1.5",
-                details={**details, "error": str(error)},
+                details=details,
+            )
+            self._capability = capability
+            return capability
+        except (OSError, subprocess.SubprocessError) as exc:
+            capability = LipSyncCapability(
+                self.provider_id,
+                self.display_name,
+                "invalid",
+                "MuseTalk 無法啟動。",
+                version="1.5",
+                details={**details, "error": str(exc)},
             )
             self._capability = capability
             return capability
 
-        help_text = f"{result.stdout}\n{result.stderr}"
-        absent = [option for option in REQUIRED_HELP_OPTIONS if not _option_present(help_text, option)]
+        help_text = f"{result.stdout or ''}\n{result.stderr or ''}"
+        absent = [option for option in REQUIRED_HELP_OPTIONS if option not in help_text]
         if result.returncode != 0 or absent:
             capability = LipSyncCapability(
                 self.provider_id,
                 self.display_name,
                 "invalid",
-                "MuseTalk CLI 版本不相容或 Python 相依套件未就緒。",
+                "MuseTalk CLI 與 Evolabs 所需版本不相容。",
                 version="1.5",
                 details={**details, "exitCode": result.returncode, "missingOptions": absent},
             )
@@ -347,7 +303,7 @@ class MuseTalk15Provider(LocalLipSyncProvider):
         destination.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="evolabs-musetalk-", dir=destination.parent) as temporary_name:
             work = Path(temporary_name)
-            # Upstream MuseTalk 1.5 invokes ffmpeg through shell strings.  Copy
+            # Upstream MuseTalk 1.5 invokes ffmpeg through shell strings. Copy
             # user inputs to fixed names and refuse unsafe work paths rather
             # than forwarding user-controlled shell metacharacters.
             if not SAFE_UPSTREAM_PATH.fullmatch(str(work)):
@@ -356,9 +312,6 @@ class MuseTalk15Provider(LocalLipSyncProvider):
                     "MuseTalk 暫存路徑含有上游 CLI 無法安全處理的字元。",
                     str(work),
                 )
-            # Fixed names also prevent a crafted source suffix from reaching
-            # MuseTalk's unquoted shell commands. ffmpeg detects both formats
-            # from their file contents.
             source = work / "source.mp4"
             audio = work / "audio.wav"
             shutil.copyfile(request.source_video, source)
@@ -389,42 +342,44 @@ class MuseTalk15Provider(LocalLipSyncProvider):
                 str(self.repository_root / "models/whisper"),
                 "--ffmpeg_path",
                 str(self.ffmpeg_executable.parent),
-                "--version",
-                "v15",
-                "--fps",
-                "25",
+                "--use_float16",
                 "--batch_size",
                 "1",
-                "--use_float16",
+                "--version",
+                "v15",
             ]
 
-            lock: GpuFileLock | None = None
+            lock_path = self.gpu_lock_path or (destination.parent / "gpu.lock")
             try:
-                if self.gpu_lock_path is not None:
-                    lock = GpuFileLock(self.gpu_lock_path)
-                    lock.acquire(timeout=self.generation_timeout, cancel_requested=self.cancel_requested)
-                result = run_cancellable(
-                    arguments,
-                    timeout=self.generation_timeout,
-                    cancel_requested=self.cancel_requested,
-                    cwd=self.repository_root,
-                )
-            except ProcessCanceled as error:
-                raise LipSyncProviderError("LIPSYNC_CANCELED", "唇同步已取消。", str(error)) from error
-            except GpuLockCanceled as error:
-                raise LipSyncProviderError("LIPSYNC_CANCELED", "等待 GPU 時已取消唇同步。", str(error)) from error
-            except GpuLockTimeout as error:
-                raise LipSyncProviderError("LIPSYNC_GPU_BUSY", "等待 GPU 超時。", str(error)) from error
-            except subprocess.TimeoutExpired as error:
-                raise LipSyncProviderError("LIPSYNC_TIMEOUT", "MuseTalk 唇同步執行逾時。", str(error)) from error
-            except OSError as error:
-                raise LipSyncProviderError("LIPSYNC_PROCESS_FAILED", "無法啟動 MuseTalk。", str(error)) from error
-            finally:
-                if lock is not None:
-                    lock.release()
+                with GpuFileLock(lock_path, timeout=min(30.0, self.generation_timeout), cancel_requested=self.cancel_requested):
+                    result = run_cancellable(
+                        arguments,
+                        cwd=self.repository_root,
+                        timeout=self.generation_timeout,
+                        cancel_requested=self.cancel_requested,
+                        capture_output=True,
+                        text=True,
+                        env={**os.environ, "PYTHONUTF8": "1"},
+                    )
+            except (ProcessCanceled, GpuLockCanceled):
+                raise LipSyncProviderError("LIPSYNC_CANCELED", "唇同步已取消。") from None
+            except GpuLockTimeout as exc:
+                raise LipSyncProviderError("LIPSYNC_GPU_BUSY", "GPU 正在處理其他工作，MuseTalk 等候逾時。", str(exc)) from exc
+            except subprocess.TimeoutExpired as exc:
+                raise LipSyncProviderError("LIPSYNC_TIMEOUT", "MuseTalk 執行逾時。", str(exc)) from exc
+            except OSError as exc:
+                raise LipSyncProviderError("LIPSYNC_PROCESS_FAILED", "MuseTalk 無法啟動。", str(exc)) from exc
 
             if result.returncode != 0:
-                detail = f"exit={result.returncode}\n{result.stderr[-4000:]}"
-                raise LipSyncProviderError("LIPSYNC_PROCESS_FAILED", "MuseTalk 唇同步執行失敗。", detail)
-            _validate_mp4(result_root / "v15" / "scene-output.mp4", destination)
+                detail = (result.stderr or result.stdout or "").strip()[-4000:]
+                raise LipSyncProviderError("LIPSYNC_PROCESS_FAILED", "MuseTalk 執行失敗。", detail)
+
+            produced = result_root / "v15" / "scene-output.mp4"
+            if not produced.is_file() or not _contains_mp4_ftyp(produced):
+                raise LipSyncProviderError("LIPSYNC_OUTPUT_MISSING", "MuseTalk 未產生有效的 MP4。", str(produced))
+
+            staged = destination.with_suffix(destination.suffix + ".part")
+            shutil.copyfile(produced, staged)
+            os.replace(staged, destination)
+
         return LipSyncResult(destination, self.provider_id, "1.5")
