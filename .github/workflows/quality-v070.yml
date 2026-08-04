@@ -83,4 +83,4 @@ jobs:
 
       - name: Generate final monochrome icons
         shell: pwsh
-        run: python scripts/generate_icons.py
+        run: '& ./.build/engine-venv/Scripts/python.exe scripts/generate_icons.py'
