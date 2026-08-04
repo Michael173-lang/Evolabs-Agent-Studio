@@ -21,22 +21,21 @@ jobs:
       - name: Check out probe branch
         uses: actions/checkout@v4
 
-      - name: Capture latest publish run and release state
+      - name: Capture publish runs and release state
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release
-          runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/windows-installer.yml/runs?branch=publish&per_page=1")"
-          run_id="$(jq -r '.workflow_runs[0].id // empty' <<<"$runs_json")"
-          if [[ -n "$run_id" ]]; then
+          runs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/windows-installer.yml/runs?branch=publish&per_page=5")"
+          details='[]'
+          while IFS= read -r run_id; do
             jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100")"
             artifacts_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?per_page=100")"
-          else
-            jobs_json='{"jobs":[]}'
-            artifacts_json='{"artifacts":[]}'
-          fi
+            item="$(jq -n --argjson run_id "$run_id" --argjson jobs "$jobs_json" --argjson artifacts "$artifacts_json" '{run_id:$run_id,jobs:$jobs.jobs,artifacts:$artifacts.artifacts}')"
+            details="$(jq -n --argjson existing "$details" --argjson item "$item" '$existing + [$item]')"
+          done < <(jq -r '.workflow_runs[].id' <<<"$runs_json")
           if release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.7.0" 2>/dev/null)"; then
             :
           else
@@ -45,10 +44,9 @@ jobs:
           jq -n \
             --arg captured_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --argjson runs "$runs_json" \
-            --argjson jobs "$jobs_json" \
-            --argjson artifacts "$artifacts_json" \
+            --argjson details "$details" \
             --argjson release "$release_json" \
-            '{captured_at:$captured_at, run:($runs.workflow_runs[0] // null), jobs:$jobs.jobs, artifacts:$artifacts.artifacts, release:$release}' \
+            '{captured_at:$captured_at, runs:$runs.workflow_runs, details:$details, release:$release}' \
             > release/publish-status-v0.7.0.json
 
       - name: Commit probe result
