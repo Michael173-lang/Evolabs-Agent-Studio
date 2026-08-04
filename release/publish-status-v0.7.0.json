@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-04T17:24:23Z",
+  "captured_at": "2026-08-04T17:25:52Z",
   "runs": [
     {
       "id": 30932754071,
@@ -11,8 +11,8 @@
       "display_title": "Publish Evolabs Agent Studio v0.7.0",
       "run_number": 8,
       "event": "push",
-      "status": "pending",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "cancelled",
       "workflow_id": 327007717,
       "check_suite_id": 83885953798,
       "check_suite_node_id": "CS_kwDOTtql9M8AAAATh_4TBg",
@@ -20,7 +20,7 @@
       "html_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/actions/runs/30932754071",
       "pull_requests": [],
       "created_at": "2026-08-04T17:11:33Z",
-      "updated_at": "2026-08-04T17:24:21Z",
+      "updated_at": "2026-08-04T17:24:22Z",
       "actor": {
         "login": "Michael173-lang",
         "id": 214980358,
@@ -235,8 +235,8 @@
       "display_title": "Evolabs v0.7.0: reliable studio UI and selectable local models",
       "run_number": 7,
       "event": "push",
-      "status": "in_progress",
-      "conclusion": null,
+      "status": "completed",
+      "conclusion": "success",
       "workflow_id": 327007717,
       "check_suite_id": 83885888975,
       "check_suite_node_id": "CS_kwDOTtql9M8AAAATh_0Vzw",
@@ -244,7 +244,7 @@
       "html_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/actions/runs/30932732954",
       "pull_requests": [],
       "created_at": "2026-08-04T17:11:17Z",
-      "updated_at": "2026-08-04T17:11:22Z",
+      "updated_at": "2026-08-04T17:24:50Z",
       "actor": {
         "login": "Michael173-lang",
         "id": 214980358,
@@ -470,11 +470,11 @@
           "head_sha": "9c48d17015880d48ba779592faaf4814ff120ddd",
           "url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/actions/jobs/92071167298",
           "html_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/actions/runs/30932732954/job/92071167298",
-          "status": "in_progress",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "created_at": "2026-08-04T17:11:18Z",
           "started_at": "2026-08-04T17:11:21Z",
-          "completed_at": null,
+          "completed_at": "2026-08-04T17:24:49Z",
           "name": "publish-windows",
           "steps": [
             {
@@ -607,35 +607,43 @@
             },
             {
               "name": "Post Cache Rust build output",
-              "status": "in_progress",
-              "conclusion": null,
+              "status": "completed",
+              "conclusion": "success",
               "number": 29,
               "started_at": "2026-08-04T17:23:58Z",
-              "completed_at": null
+              "completed_at": "2026-08-04T17:24:40Z"
             },
             {
               "name": "Post Set up Python 3.11 x64",
-              "status": "pending",
-              "conclusion": null,
+              "status": "completed",
+              "conclusion": "success",
               "number": 30,
-              "started_at": null,
-              "completed_at": null
+              "started_at": "2026-08-04T17:24:40Z",
+              "completed_at": "2026-08-04T17:24:40Z"
             },
             {
               "name": "Post Set up Node.js 24",
-              "status": "pending",
-              "conclusion": null,
+              "status": "completed",
+              "conclusion": "success",
               "number": 31,
-              "started_at": null,
-              "completed_at": null
+              "started_at": "2026-08-04T17:24:40Z",
+              "completed_at": "2026-08-04T17:24:44Z"
             },
             {
               "name": "Post Check out source",
-              "status": "pending",
-              "conclusion": null,
+              "status": "completed",
+              "conclusion": "success",
               "number": 32,
-              "started_at": null,
-              "completed_at": null
+              "started_at": "2026-08-04T17:24:44Z",
+              "completed_at": "2026-08-04T17:24:47Z"
+            },
+            {
+              "name": "Complete job",
+              "status": "completed",
+              "conclusion": "success",
+              "number": 33,
+              "started_at": "2026-08-04T17:24:47Z",
+              "completed_at": "2026-08-04T17:24:47Z"
             }
           ],
           "check_run_url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/check-runs/92071167298",
