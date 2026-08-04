@@ -69,6 +69,10 @@ jobs:
         shell: pwsh
         run: npm test
 
+      - name: Build frontend assets for Tauri context
+        shell: pwsh
+        run: npm run build:web
+
       - name: Compile and test Tauri commands
         shell: pwsh
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
