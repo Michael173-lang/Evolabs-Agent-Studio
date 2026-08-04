@@ -80,7 +80,7 @@ jobs:
 
       - name: Generate final monochrome Windows icons
         shell: pwsh
-        run: python scripts/generate_icons.py
+        run: '& ./.build/engine-venv/Scripts/python.exe scripts/generate_icons.py'
 
       - name: Build, sign and publish NSIS update
         uses: tauri-apps/tauri-action@v1
