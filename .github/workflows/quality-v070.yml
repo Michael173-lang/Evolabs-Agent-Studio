@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - "release/v0.7.0-ui-reliability"
+  pull_request:
+    branches:
+      - "main"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: evolabs-v070-quality
+  group: evolabs-v070-quality-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
