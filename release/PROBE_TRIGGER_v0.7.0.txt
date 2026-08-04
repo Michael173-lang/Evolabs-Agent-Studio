@@ -1,2 +1,0 @@
-Probe the signed Windows publish workflow for Evolabs Agent Studio v0.7.0.
-Final verification after signed release completion.
