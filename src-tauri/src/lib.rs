@@ -1,3 +1,4 @@
+mod agent_models;
 mod commands;
 mod runtime_manager;
 
@@ -36,6 +37,8 @@ pub fn run() {
             commands::get_agent_runtime,
             commands::run_agent_stage,
             commands::run_agent_plan,
+            agent_models::get_agent_models,
+            agent_models::run_agent_stage_v2,
             commands::check_app_update,
             commands::install_app_update,
         ])
