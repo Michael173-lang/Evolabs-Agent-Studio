@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.7.0"
-SHA256 = "ca10b6e443fb34fdb9f23a25854629d5085fde59c11c2d0f3e0a78bac9128e00"
+SHA256 = "220320fb5dff3beccdfe415fcc063431fa70e25684bb772b45a555221b7ca0ed"
 PARTS = ROOT / "scripts" / ".v070-payload"
 
 
