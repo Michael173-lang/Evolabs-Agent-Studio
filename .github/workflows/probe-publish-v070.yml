@@ -53,7 +53,7 @@ jobs:
               runs:[$runs.workflow_runs[] | {id,run_number,head_sha,status,conclusion,created_at,updated_at,html_url}],
               job:($jobs.jobs[0] // null | if . == null then null else {id,name,status,conclusion,steps:[.steps[] | {number,name,status,conclusion}]} end),
               artifacts:[$artifacts.artifacts[] | {id,name,size_in_bytes,expired,digest,created_at,expires_at,archive_download_url}],
-              release:(if $release == null then null else {$release | id,tag_name,name,draft,prerelease,published_at,html_url,target_commitish,assets:[.assets[] | {id,name,label,state,content_type,size,digest,download_count,created_at,updated_at,browser_download_url}]} end)
+              release:(if $release == null then null else ($release | {id,tag_name,name,draft,prerelease,published_at,html_url,target_commitish,assets:[.assets[] | {id,name,label,state,content_type,size,digest,download_count,created_at,updated_at,browser_download_url}]}) end)
             }' > release/publish-status-compact-v0.7.0.json
 
       - name: Commit probe result
