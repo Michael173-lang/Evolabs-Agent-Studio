@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-08-04T17:20:35Z",
+  "captured_at": "2026-08-04T17:24:23Z",
   "runs": [
     {
       "id": 30932754071,
@@ -20,7 +20,7 @@
       "html_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/actions/runs/30932754071",
       "pull_requests": [],
       "created_at": "2026-08-04T17:11:33Z",
-      "updated_at": "2026-08-04T17:11:34Z",
+      "updated_at": "2026-08-04T17:24:21Z",
       "actor": {
         "login": "Michael173-lang",
         "id": 214980358,
@@ -591,26 +591,26 @@
             },
             {
               "name": "Build, sign and publish NSIS update",
-              "status": "in_progress",
-              "conclusion": null,
+              "status": "completed",
+              "conclusion": "success",
               "number": 15,
               "started_at": "2026-08-04T17:16:22Z",
-              "completed_at": null
+              "completed_at": "2026-08-04T17:23:54Z"
             },
             {
               "name": "Keep Windows installer as workflow artifact",
-              "status": "pending",
-              "conclusion": null,
+              "status": "completed",
+              "conclusion": "success",
               "number": 16,
-              "started_at": null,
-              "completed_at": null
+              "started_at": "2026-08-04T17:23:54Z",
+              "completed_at": "2026-08-04T17:23:58Z"
             },
             {
               "name": "Post Cache Rust build output",
-              "status": "pending",
+              "status": "in_progress",
               "conclusion": null,
               "number": 29,
-              "started_at": null,
+              "started_at": "2026-08-04T17:23:58Z",
               "completed_at": null
             },
             {
@@ -648,8 +648,180 @@
           "runner_group_name": "GitHub Actions"
         }
       ],
-      "artifacts": []
+      "artifacts": [
+        {
+          "id": 8902190030,
+          "node_id": "MDg6QXJ0aWZhY3Q4OTAyMTkwMDMw",
+          "name": "Evolabs-Windows-x64-publish",
+          "size_in_bytes": 44247547,
+          "url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/actions/artifacts/8902190030",
+          "archive_download_url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/actions/artifacts/8902190030/zip",
+          "expired": false,
+          "digest": "sha256:284a7fce5e532b2c219622b1388e85a2eb2b98302c61a3454bffb74d8ea3116a",
+          "created_at": "2026-08-04T17:23:57Z",
+          "updated_at": "2026-08-04T17:23:57Z",
+          "expires_at": "2026-09-03T17:23:54Z",
+          "workflow_run": {
+            "id": 30932732954,
+            "repository_id": 1322952180,
+            "head_repository_id": 1322952180,
+            "head_branch": "publish",
+            "head_sha": "9c48d17015880d48ba779592faaf4814ff120ddd"
+          }
+        }
+      ]
     }
   ],
-  "release": null
+  "release": {
+    "url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/releases/365039658",
+    "assets_url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/releases/365039658/assets",
+    "upload_url": "https://uploads.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/releases/365039658/assets{?name,label}",
+    "html_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/releases/tag/v0.7.0",
+    "id": 365039658,
+    "author": {
+      "login": "github-actions[bot]",
+      "id": 41898282,
+      "node_id": "MDM6Qm90NDE4OTgyODI=",
+      "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+      "html_url": "https://github.com/apps/github-actions",
+      "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+      "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+      "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+      "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+      "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+      "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+      "type": "Bot",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "node_id": "RE_kwDOTtql9M4VwhAq",
+    "tag_name": "v0.7.0",
+    "target_commitish": "9c48d17015880d48ba779592faaf4814ff120ddd",
+    "name": "Evolabs Agent Studio v0.7.0",
+    "draft": false,
+    "immutable": false,
+    "prerelease": false,
+    "created_at": "2026-08-04T17:10:53Z",
+    "updated_at": "2026-08-04T17:23:54Z",
+    "published_at": "2026-08-04T17:23:49Z",
+    "assets": [
+      {
+        "url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/releases/assets/501615011",
+        "id": 501615011,
+        "node_id": "RA_kwDOTtql9M4d5gmj",
+        "name": "Evolabs_0.7.0_x64-setup.exe",
+        "label": "Evolabs_0.7.0_x64-setup.exe",
+        "uploader": {
+          "login": "github-actions[bot]",
+          "id": 41898282,
+          "node_id": "MDM6Qm90NDE4OTgyODI=",
+          "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+          "html_url": "https://github.com/apps/github-actions",
+          "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+          "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+          "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+          "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+          "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+          "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+          "type": "Bot",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "content_type": "application/zip",
+        "state": "uploaded",
+        "size": 44254389,
+        "digest": "sha256:204e4ea0e4997b5236194b4f51a2a6acfc1a87bc6f3f732c948be8b89fd49ed7",
+        "download_count": 0,
+        "created_at": "2026-08-04T17:23:50Z",
+        "updated_at": "2026-08-04T17:23:52Z",
+        "browser_download_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/releases/download/v0.7.0/Evolabs_0.7.0_x64-setup.exe"
+      },
+      {
+        "url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/releases/assets/501615080",
+        "id": 501615080,
+        "node_id": "RA_kwDOTtql9M4d5gno",
+        "name": "Evolabs_0.7.0_x64-setup.exe.sig",
+        "label": "Evolabs_0.7.0_x64-setup.exe.sig",
+        "uploader": {
+          "login": "github-actions[bot]",
+          "id": 41898282,
+          "node_id": "MDM6Qm90NDE4OTgyODI=",
+          "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+          "html_url": "https://github.com/apps/github-actions",
+          "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+          "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+          "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+          "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+          "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+          "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+          "type": "Bot",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "content_type": "application/zip",
+        "state": "uploaded",
+        "size": 416,
+        "digest": "sha256:a63405784c5ea286fd4929a6df4e7c46bf5479f8dd8b5ddf5037c18bc05b15fd",
+        "download_count": 0,
+        "created_at": "2026-08-04T17:23:53Z",
+        "updated_at": "2026-08-04T17:23:53Z",
+        "browser_download_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/releases/download/v0.7.0/Evolabs_0.7.0_x64-setup.exe.sig"
+      },
+      {
+        "url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/releases/assets/501615110",
+        "id": 501615110,
+        "node_id": "RA_kwDOTtql9M4d5goG",
+        "name": "latest.json",
+        "label": "latest.json",
+        "uploader": {
+          "login": "github-actions[bot]",
+          "id": 41898282,
+          "node_id": "MDM6Qm90NDE4OTgyODI=",
+          "avatar_url": "https://avatars.githubusercontent.com/in/15368?v=4",
+          "gravatar_id": "",
+          "url": "https://api.github.com/users/github-actions%5Bbot%5D",
+          "html_url": "https://github.com/apps/github-actions",
+          "followers_url": "https://api.github.com/users/github-actions%5Bbot%5D/followers",
+          "following_url": "https://api.github.com/users/github-actions%5Bbot%5D/following{/other_user}",
+          "gists_url": "https://api.github.com/users/github-actions%5Bbot%5D/gists{/gist_id}",
+          "starred_url": "https://api.github.com/users/github-actions%5Bbot%5D/starred{/owner}{/repo}",
+          "subscriptions_url": "https://api.github.com/users/github-actions%5Bbot%5D/subscriptions",
+          "organizations_url": "https://api.github.com/users/github-actions%5Bbot%5D/orgs",
+          "repos_url": "https://api.github.com/users/github-actions%5Bbot%5D/repos",
+          "events_url": "https://api.github.com/users/github-actions%5Bbot%5D/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/github-actions%5Bbot%5D/received_events",
+          "type": "Bot",
+          "user_view_type": "public",
+          "site_admin": false
+        },
+        "content_type": "application/zip",
+        "state": "uploaded",
+        "size": 1477,
+        "digest": "sha256:9095afbf89b595d99e325ab1adc389087565ebca4eeea50931f198e3b79ff11f",
+        "download_count": 0,
+        "created_at": "2026-08-04T17:23:54Z",
+        "updated_at": "2026-08-04T17:23:54Z",
+        "browser_download_url": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/releases/download/v0.7.0/latest.json"
+      }
+    ],
+    "tarball_url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/tarball/v0.7.0",
+    "zipball_url": "https://api.github.com/repos/Michael173-lang/Evolabs-Agent-Studio/zipball/v0.7.0",
+    "body": "Evolabs Agent Studio v0.7 introduces a reliable script-to-screenwriter flow,\na restrained professional interface, selectable local Agent models,\nclearer Runtime/model diagnostics, and a rebuilt monochrome identity.\n\n## What's Changed\n* Evolabs v0.7.0 — reliable studio UI and selectable local models by @Michael173-lang in https://github.com/Michael173-lang/Evolabs-Agent-Studio/pull/1\n\n## New Contributors\n* @Michael173-lang made their first contribution in https://github.com/Michael173-lang/Evolabs-Agent-Studio/pull/1\n\n**Full Changelog**: https://github.com/Michael173-lang/Evolabs-Agent-Studio/compare/v0.6.0...v0.7.0",
+    "mentions_count": 1
+  }
 }
