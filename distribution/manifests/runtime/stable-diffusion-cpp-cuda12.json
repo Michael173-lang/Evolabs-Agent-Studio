@@ -1,0 +1,62 @@
+{
+  "$schema": "../schemas/pack-manifest.schema.json",
+  "schemaVersion": 1,
+  "kind": "runtime-pack",
+  "id": "stable-diffusion-cpp-cuda12",
+  "version": "master-810-db99efd",
+  "status": "release",
+  "name": "stable-diffusion.cpp CUDA 12 Runtime",
+  "description": "stable-diffusion.cpp 官方 Windows x64 CUDA 12 Runtime。",
+  "provider": "sd-cli",
+  "capabilities": ["txt2img", "img2img", "cuda12"],
+  "hardware": {
+    "gpuNameContains": ["NVIDIA"],
+    "minVramMb": 3500,
+    "minRamMb": 8192,
+    "requiresReliableVramProbe": true
+  },
+  "install": {
+    "partialSuffix": ".part",
+    "verification": "sha256-and-size",
+    "atomicActivate": true
+  },
+  "licenses": [
+    {
+      "id": "mit",
+      "name": "MIT License",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/blob/master/LICENSE",
+      "acceptanceRequired": false,
+      "note": "Runtime binary is downloaded from the official leejet/stable-diffusion.cpp GitHub release."
+    }
+  ],
+  "exports": {
+    "sdCli": {
+      "required": true,
+      "candidates": ["sd-cli.exe", "bin/sd-cli.exe", "sd.exe", "bin/sd.exe"],
+      "searchFileNames": ["sd-cli.exe", "sd.exe"]
+    }
+  },
+  "files": [
+    {
+      "id": "stable-diffusion-cpp-cuda12-archive",
+      "role": "runtime-archive",
+      "fileName": "sd-master-db99efd-bin-win-cuda12-x64.zip",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-810-db99efd/sd-master-db99efd-bin-win-cuda12-x64.zip",
+      "size": 362013051,
+      "sizeBytes": 362013051,
+      "sha256": "5a71f975e82cfb809884910bdd7b39095525d4525cd1519994106c8c236d9062",
+      "kind": "zip",
+      "destination": "runtime",
+      "licenseId": "mit",
+      "source": {
+        "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-810-db99efd/sd-master-db99efd-bin-win-cuda12-x64.zip"
+      },
+      "install": {
+        "mode": "extract-zip",
+        "destination": "runtime",
+        "stripComponents": "none",
+        "maxExtractedBytes": 2147483648
+      }
+    }
+  ]
+}

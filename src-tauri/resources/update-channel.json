@@ -1,0 +1,5 @@
+{
+  "enabled": true,
+  "endpoint": "https://github.com/Michael173-lang/Evolabs-Agent-Studio/releases/latest/download/latest.json",
+  "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMyRDIwM0JFOTVBQzgxNUQKUldSZGdheVZ2Z1BTd2wwS0krb1k0RkQ2MFBPb2t0M2h3VUtETUs3bXlZdis0NTZZNG4zM3BYK3IK"
+}

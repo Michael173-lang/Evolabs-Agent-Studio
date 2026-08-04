@@ -1,0 +1,79 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Evolabs",
+  "version": "0.6.0",
+  "identifier": "studio.evolabs.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev:web",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm run build:web",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Evolabs",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1080,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "backgroundColor": "#090909",
+        "decorations": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:*"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "resources": [
+      "resources/engine/**/*",
+      "resources/manifests/**/*",
+      "resources/update-channel.json"
+    ],
+    "category": "Video",
+    "shortDescription": "多智慧體本機短劇工作室",
+    "longDescription": "貼上劇本後，由編劇、美術、IP、角色、場景、分鏡、聲音與導演 Agent 自動建立製作聖經、生成畫面並合成短片。",
+    "copyright": "Copyright © 2026 Evolabs",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "languages": [
+          "TradChinese",
+          "English"
+        ],
+        "installerIcon": "icons/icon.ico"
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "windows": {
+        "installMode": "passive"
+      },
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMyRDIwM0JFOTVBQzgxNUQKUldSZGdheVZ2Z1BTd2wwS0krb1k0RkQ2MFBPb2t0M2h3VUtETUs3bXlZdis0NTZZNG4zM3BYK3IK",
+      "endpoints": [
+        "https://github.com/Michael173-lang/Evolabs-Agent-Studio/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

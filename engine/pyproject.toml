@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools==82.0.1", "wheel==0.47.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evolabs-engine"
+version = "0.6.0"
+description = "Local AI image and resumable video runtime for Evolabs"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "Pillow==12.2.0",
+  "imageio-ffmpeg==0.6.0",
+]
+
+[project.scripts]
+evolabs-engine = "evolabs_engine.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

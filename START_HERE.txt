@@ -1,0 +1,35 @@
+Evolabs Agent Studio v0.6.0 — 從這裡開始
+================================================
+
+這一版已經改成「你只貼劇本，剩下交給智慧體」。
+請不要再執行舊的 BUILD_NOW、COMPILE_EVOLABS_DIRECT 或手動覆蓋腳本流程。
+
+第一次（只做一次）
+------------------
+1. 把整個 ZIP 完整解壓縮。
+2. 雙擊 SETUP_AUTO_UPDATE.bat。
+3. 瀏覽器開啟後登入 GitHub。
+4. repository 提示直接按 Enter，使用預設名稱即可。
+5. 等待 GitHub 在雲端測試、建置與簽署 Windows 安裝器。
+6. 安裝器下載完成後，輸入 Y 或直接按 Enter 啟動安裝。
+7. 安裝完成後開啟 Evolabs：貼上完整劇本 → 按「交給 Evolabs 團隊」。
+
+以後更新已安裝的 Evolabs
+------------------------
+Evolabs 啟動時會自動檢查。看到新版時按：
+設定 → 自動更新 → 更新並重啟
+
+以後發佈你修改的新版本
+----------------------
+雙擊 PUBLISH_UPDATE.bat。
+版本與摘要都可以直接按 Enter；GitHub 會在雲端產生新 EXE。
+你不需要再安裝 Rust、重跑本機 NSIS 或手動替換 EXE。
+
+重要備份
+--------
+請安全備份：
+%USERPROFILE%\.evolabs\updater
+
+其中的 evolabs-updater.key 是更新私鑰。不要傳到 Discord、不要放進 GitHub、不要刪除唯一備份。
+
+BUILD_WINDOWS.bat 只是開發者救援建置器，正常安裝與更新不需要使用它。

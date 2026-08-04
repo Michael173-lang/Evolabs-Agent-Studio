@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "project_cli_smoke",
+  "title": "Evolabs 功能核心展示",
+  "story": "兩個短鏡頭驗證真正的本機 MP4 管線。",
+  "settings": {
+    "mode": "anime",
+    "format": "9:16",
+    "targetSeconds": 4,
+    "quality": "speed",
+    "renderMode": "comic",
+    "captions": true
+  },
+  "characters": [
+    {
+      "id": "character_evo",
+      "name": "Evo",
+      "role": "主角",
+      "appearance": "黑色極簡剪影與銀灰色輪廓",
+      "voice": "中性・自然",
+      "locked": true,
+      "accent": "#c3c8d4"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "scene_smoke_1",
+      "order": 1,
+      "title": "故事開始運轉",
+      "visual": "黑色空間裡，一道銀色光線勾勒出角色的輪廓。",
+      "dialogue": "Evo：這不是進度動畫，影片核心真的開始工作了。",
+      "characterIds": ["character_evo"],
+      "duration": 2,
+      "shot": "中景・緩慢推進"
+    },
+    {
+      "id": "scene_smoke_2",
+      "order": 2,
+      "title": "輸出完成",
+      "visual": "畫面逐漸收束成 Evolabs 的白色標記。",
+      "dialogue": "Evo：每一鏡都已合成，現在驗證最終 MP4。",
+      "characterIds": ["character_evo"],
+      "duration": 2,
+      "shot": "近景・固定鏡頭"
+    }
+  ]
+}

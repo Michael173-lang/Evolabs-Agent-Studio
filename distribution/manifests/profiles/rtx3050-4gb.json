@@ -1,0 +1,48 @@
+{
+  "id": "rtx3050-4gb",
+  "version": 1,
+  "status": "active-sd-cli-profile",
+  "display_name": "RTX 3050 4GB 低顯存配置",
+  "match": {
+    "gpu_name_contains": ["RTX 3050"],
+    "vram_mb_min": 3500,
+    "vram_mb_max": 4608,
+    "ram_mb_min": 11264
+  },
+  "runtime": {
+    "provider": "stable-diffusion.cpp-sd-cli",
+    "precision": "fp16",
+    "gpu_workers": 1,
+    "cpu_heavy_workers": 2,
+    "ffmpeg_workers": 1,
+    "download_workers": 1,
+    "model_offload": "cpu",
+    "vae_tiling": true,
+    "diffusion_flash_attention": true,
+    "max_vram_gb": 3.0,
+    "model_reuse": false,
+    "step_preview": false,
+    "reserve_vram_mb": 768
+  },
+  "anime": {
+    "generation_width": 448,
+    "generation_height": 768,
+    "batch_size": 1,
+    "fast_steps": 8,
+    "balanced_steps": 12,
+    "quality_steps": 20,
+    "max_reference_characters_per_shot": 1
+  },
+  "video": {
+    "preview_width": 360,
+    "preview_height": 640,
+    "preview_fps": 12,
+    "export_width": 720,
+    "export_height": 1280,
+    "export_fps": 24,
+    "encoder": "libx264",
+    "preset": "veryfast",
+    "crf": 21
+  },
+  "oom_behavior": "stop-current-job-with-actionable-error"
+}

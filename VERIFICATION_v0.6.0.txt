@@ -1,0 +1,15 @@
+Evolabs Agent Studio v0.6.0 — Source Verification
+===================================================
+
+Validated in the packaging environment:
+- TypeScript project check: passed
+- Source release validation: passed (10 version fields, 13 pinned dependencies, 19 JSON files)
+- Engine manifest validation: passed
+- Engine unit/integration tests: 76/76 passed
+- JSON parse validation: passed
+- Package path traversal, symbolic-link and secret scan: passed
+
+Not claimed here:
+- The v0.6.0 Tauri/NSIS Windows binary was not compiled in this non-Windows packaging environment.
+- SETUP_AUTO_UPDATE.bat publishes the source to a public GitHub repository and uses a clean Windows GitHub Actions runner to test, build and sign the first Setup.exe.
+- After that first install, later signed releases are installed from inside Evolabs.

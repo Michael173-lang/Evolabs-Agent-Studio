@@ -1,0 +1,132 @@
+{
+  "$schema": "../schemas/pack-manifest.schema.json",
+  "schemaVersion": 1,
+  "kind": "model-pack",
+  "id": "anime-core",
+  "version": "0.4.0",
+  "status": "release",
+  "name": "動漫 AI 核心",
+  "description": "Evolabs 動漫首裝包：AbyssOrangeMix 3、IP-Adapter Plus 與 CLIP Vision。",
+  "provider": "sd-cli",
+  "capabilities": ["anime_image", "character_consistency"],
+  "hardware": {
+    "gpuNameContains": ["NVIDIA", "RTX"],
+    "minVramMb": 3500,
+    "minRamMb": 11264,
+    "requiresReliableVramProbe": true
+  },
+  "install": {
+    "partialSuffix": ".part",
+    "verification": "sha256-and-size",
+    "atomicActivate": true
+  },
+  "licenses": [
+    {
+      "id": "mit",
+      "name": "MIT License",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/blob/master/LICENSE",
+      "acceptanceRequired": false,
+      "note": "Runtime binary is downloaded from the official leejet/stable-diffusion.cpp GitHub release."
+    },
+    {
+      "id": "creativeml-openrail-m",
+      "name": "CreativeML Open RAIL-M",
+      "url": "https://huggingface.co/spaces/CompVis/stable-diffusion-license",
+      "acceptanceRequired": true,
+      "note": "AbyssOrangeMix 3 is downloaded from its upstream Hugging Face repository. The license includes use restrictions; review it before installation."
+    },
+    {
+      "id": "apache-2.0",
+      "name": "Apache License 2.0",
+      "url": "https://github.com/tencent-ailab/IP-Adapter/blob/main/LICENSE",
+      "acceptanceRequired": false,
+      "note": "IP-Adapter and its CLIP Vision image encoder are downloaded from the upstream h94/IP-Adapter repository."
+    }
+  ],
+  "activation": {
+    "provider": "sd-cli",
+    "executableGlob": "runtime/**/sd-cli.exe",
+    "modelPath": "AOM3B2_orangemixs.safetensors",
+    "clipVisionPath": "clip-vision/model.safetensors",
+    "ipAdapterPath": "ip-adapter/ip-adapter-plus_sd15.safetensors"
+  },
+  "files": [
+    {
+      "id": "stable-diffusion-cpp-cuda12-archive",
+      "role": "runtime-archive",
+      "fileName": "sd-master-db99efd-bin-win-cuda12-x64.zip",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-810-db99efd/sd-master-db99efd-bin-win-cuda12-x64.zip",
+      "size": 362013051,
+      "sha256": "5a71f975e82cfb809884910bdd7b39095525d4525cd1519994106c8c236d9062",
+      "kind": "zip",
+      "destination": "runtime",
+      "licenseId": "mit",
+      "source": {
+        "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-810-db99efd/sd-master-db99efd-bin-win-cuda12-x64.zip"
+      },
+      "install": {
+        "mode": "extract-zip",
+        "destination": "runtime",
+        "stripComponents": "none",
+        "maxExtractedBytes": 2147483648
+      }
+    },
+    {
+      "id": "aom3b2-checkpoint",
+      "role": "stable-diffusion-1x-checkpoint",
+      "fileName": "AOM3B2_orangemixs.safetensors",
+      "url": "https://huggingface.co/WarriorMama777/OrangeMixs/resolve/0b434c91acf4dd455ae58c2f017bdf8bb7efe01d/Models/AbyssOrangeMix3/AOM3B2_orangemixs.safetensors?download=true",
+      "size": 2132627010,
+      "sizeBytes": 2132627010,
+      "sha256": "f553e7bde46cfe9b3ef1f31998703a640af7c047b65883996e44ac7156f8c1db",
+      "kind": "file",
+      "destination": "AOM3B2_orangemixs.safetensors",
+      "licenseId": "creativeml-openrail-m",
+      "source": {
+        "url": "https://huggingface.co/WarriorMama777/OrangeMixs/resolve/0b434c91acf4dd455ae58c2f017bdf8bb7efe01d/Models/AbyssOrangeMix3/AOM3B2_orangemixs.safetensors?download=true"
+      },
+      "install": {
+        "mode": "file",
+        "destination": "AOM3B2_orangemixs.safetensors"
+      }
+    },
+    {
+      "id": "ip-adapter-plus-sd15",
+      "role": "ip-adapter",
+      "fileName": "ip-adapter-plus_sd15.safetensors",
+      "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/ip-adapter-plus_sd15.safetensors?download=true",
+      "size": 98183288,
+      "sizeBytes": 98183288,
+      "sha256": "a1c250be40455cc61a43da1201ec3f1edaea71214865fb47f57927e06cbe4996",
+      "kind": "file",
+      "destination": "ip-adapter/ip-adapter-plus_sd15.safetensors",
+      "licenseId": "apache-2.0",
+      "source": {
+        "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/ip-adapter-plus_sd15.safetensors?download=true"
+      },
+      "install": {
+        "mode": "file",
+        "destination": "ip-adapter/ip-adapter-plus_sd15.safetensors"
+      }
+    },
+    {
+      "id": "clip-vision-image-encoder",
+      "role": "clip-vision",
+      "fileName": "model.safetensors",
+      "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/image_encoder/model.safetensors?download=true",
+      "size": 2528373448,
+      "sizeBytes": 2528373448,
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "kind": "file",
+      "destination": "clip-vision/model.safetensors",
+      "licenseId": "apache-2.0",
+      "source": {
+        "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/image_encoder/model.safetensors?download=true"
+      },
+      "install": {
+        "mode": "file",
+        "destination": "clip-vision/model.safetensors"
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evolabs.local/schemas/pack-manifest.schema.json",
+  "title": "Evolabs verified pack manifest",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "id", "version", "status", "provider", "install", "licenses", "files"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "enum": ["model-pack", "runtime-pack"] },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{1,63}$" },
+    "version": { "type": "string", "pattern": "^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$" },
+    "status": { "enum": ["release", "manifest-template"] },
+    "provider": { "const": "sd-cli" },
+    "install": {
+      "type": "object",
+      "required": ["verification", "atomicActivate"],
+      "properties": {
+        "verification": { "const": "sha256-and-size" },
+        "atomicActivate": { "const": true }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "role", "fileName", "url", "size", "sha256", "kind", "destination", "licenseId", "source", "install"],
+        "properties": {
+          "url": { "type": "string", "pattern": "^https://" },
+          "size": { "type": "integer", "minimum": 1 },
+          "sizeBytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "kind": { "enum": ["file", "zip"] },
+          "destination": { "type": "string", "minLength": 1 },
+          "source": {
+            "type": "object",
+            "required": ["url"],
+            "properties": { "url": { "type": "string", "pattern": "^https://" } }
+          },
+          "install": {
+            "type": "object",
+            "required": ["mode", "destination"],
+            "properties": {
+              "mode": { "enum": ["file", "extract-zip"] },
+              "destination": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

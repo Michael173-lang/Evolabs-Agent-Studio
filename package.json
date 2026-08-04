@@ -1,0 +1,36 @@
+{
+  "name": "evolabs",
+  "version": "0.6.0",
+  "private": true,
+  "description": "Evolabs Agent Studio — a local-first multi-agent short-film production studio.",
+  "author": "Evolabs",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "dev:web": "vite --host 127.0.0.1",
+    "build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-release.ps1 && tauri build --bundles nsis -- --locked",
+    "build:web": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "check": "tsc -b --pretty false",
+    "dist:win": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/preflight-release.ps1 && tauri build --bundles nsis -- --locked"
+  },
+  "dependencies": {
+    "@fontsource-variable/noto-sans-tc": "5.3.0",
+    "@tauri-apps/api": "2.11.1",
+    "@vitejs/plugin-react": "6.0.5",
+    "lucide-react": "1.28.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "26.1.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "typescript": "7.0.2",
+    "vite": "8.2.0",
+    "vitest": "4.1.10"
+  }
+}

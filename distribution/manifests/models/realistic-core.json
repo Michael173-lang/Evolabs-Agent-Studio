@@ -1,0 +1,159 @@
+{
+  "$schema": "../schemas/pack-manifest.schema.json",
+  "schemaVersion": 1,
+  "kind": "model-pack",
+  "id": "realistic-core",
+  "version": "0.4.0",
+  "status": "release",
+  "name": "寫實 AI 核心",
+  "description": "Evolabs 選配寫實模型包：Realistic Vision V5.1、IP-Adapter Plus 與 CLIP Vision。",
+  "provider": "sd-cli",
+  "capabilities": ["realistic_image", "character_consistency"],
+  "hardware": {
+    "gpuNameContains": ["NVIDIA", "RTX"],
+    "minVramMb": 3500,
+    "minRamMb": 11264,
+    "requiresReliableVramProbe": true
+  },
+  "install": {
+    "partialSuffix": ".part",
+    "verification": "sha256-and-size",
+    "atomicActivate": true
+  },
+  "licenses": [
+    {
+      "id": "mit",
+      "name": "MIT License",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/blob/master/LICENSE",
+      "acceptanceRequired": false,
+      "note": "Runtime binary is downloaded from the official leejet/stable-diffusion.cpp GitHub release."
+    },
+    {
+      "id": "creativeml-openrail-m",
+      "name": "CreativeML Open RAIL-M",
+      "url": "https://huggingface.co/spaces/CompVis/stable-diffusion-license",
+      "acceptanceRequired": true,
+      "note": "Realistic Vision V5.1 is downloaded from its upstream Hugging Face repository, whose repository metadata declares CreativeML Open RAIL-M. The license includes use restrictions; review it before installation."
+    },
+    {
+      "id": "stability-ai-mit",
+      "name": "MIT License",
+      "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse-original",
+      "acceptanceRequired": false,
+      "note": "The recommended SD 1.x VAE is downloaded from Stability AI's upstream repository, whose metadata declares MIT."
+    },
+    {
+      "id": "apache-2.0",
+      "name": "Apache License 2.0",
+      "url": "https://github.com/tencent-ailab/IP-Adapter/blob/main/LICENSE",
+      "acceptanceRequired": false,
+      "note": "IP-Adapter and its CLIP Vision image encoder are downloaded from the upstream h94/IP-Adapter repository."
+    }
+  ],
+  "activation": {
+    "provider": "sd-cli",
+    "executableGlob": "runtime/**/sd-cli.exe",
+    "modelPath": "Realistic_Vision_V5.1_fp16-no-ema.safetensors",
+    "vaePath": "vae/vae-ft-mse-840000-ema-pruned.safetensors",
+    "clipVisionPath": "clip-vision/model.safetensors",
+    "ipAdapterPath": "ip-adapter/ip-adapter-plus_sd15.safetensors"
+  },
+  "files": [
+    {
+      "id": "stable-diffusion-cpp-cuda12-archive",
+      "role": "runtime-archive",
+      "fileName": "sd-master-db99efd-bin-win-cuda12-x64.zip",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-810-db99efd/sd-master-db99efd-bin-win-cuda12-x64.zip",
+      "size": 362013051,
+      "sha256": "5a71f975e82cfb809884910bdd7b39095525d4525cd1519994106c8c236d9062",
+      "kind": "zip",
+      "destination": "runtime",
+      "licenseId": "mit",
+      "source": {
+        "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-810-db99efd/sd-master-db99efd-bin-win-cuda12-x64.zip"
+      },
+      "install": {
+        "mode": "extract-zip",
+        "destination": "runtime",
+        "stripComponents": "none",
+        "maxExtractedBytes": 2147483648
+      }
+    },
+    {
+      "id": "realistic-vision-v5.1-fp16-no-ema",
+      "role": "stable-diffusion-1x-checkpoint",
+      "fileName": "Realistic_Vision_V5.1_fp16-no-ema.safetensors",
+      "url": "https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE/resolve/305469dfd7d7410cff6299d34727e237374b5f36/Realistic_Vision_V5.1_fp16-no-ema.safetensors?download=true",
+      "size": 2132625894,
+      "sizeBytes": 2132625894,
+      "sha256": "99a75a901f4fec732056930a89fa34cf360f6f72d75ce5bf333ddf82adf8dd2a",
+      "kind": "file",
+      "destination": "Realistic_Vision_V5.1_fp16-no-ema.safetensors",
+      "licenseId": "creativeml-openrail-m",
+      "source": {
+        "url": "https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE/resolve/305469dfd7d7410cff6299d34727e237374b5f36/Realistic_Vision_V5.1_fp16-no-ema.safetensors?download=true"
+      },
+      "install": {
+        "mode": "file",
+        "destination": "Realistic_Vision_V5.1_fp16-no-ema.safetensors"
+      }
+    },
+    {
+      "id": "sd-vae-ft-mse-safetensors",
+      "role": "vae",
+      "fileName": "vae-ft-mse-840000-ema-pruned.safetensors",
+      "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/629b3ad3030ce36e15e70c5db7d91df0d60c627f/vae-ft-mse-840000-ema-pruned.safetensors?download=true",
+      "size": 334641190,
+      "sizeBytes": 334641190,
+      "sha256": "735e4c3a447a3255760d7f86845f09f937809baa529c17370d83e4c3758f3c75",
+      "kind": "file",
+      "destination": "vae/vae-ft-mse-840000-ema-pruned.safetensors",
+      "licenseId": "stability-ai-mit",
+      "source": {
+        "url": "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/629b3ad3030ce36e15e70c5db7d91df0d60c627f/vae-ft-mse-840000-ema-pruned.safetensors?download=true"
+      },
+      "install": {
+        "mode": "file",
+        "destination": "vae/vae-ft-mse-840000-ema-pruned.safetensors"
+      }
+    },
+    {
+      "id": "ip-adapter-plus-sd15",
+      "role": "ip-adapter",
+      "fileName": "ip-adapter-plus_sd15.safetensors",
+      "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/ip-adapter-plus_sd15.safetensors?download=true",
+      "size": 98183288,
+      "sizeBytes": 98183288,
+      "sha256": "a1c250be40455cc61a43da1201ec3f1edaea71214865fb47f57927e06cbe4996",
+      "kind": "file",
+      "destination": "ip-adapter/ip-adapter-plus_sd15.safetensors",
+      "licenseId": "apache-2.0",
+      "source": {
+        "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/ip-adapter-plus_sd15.safetensors?download=true"
+      },
+      "install": {
+        "mode": "file",
+        "destination": "ip-adapter/ip-adapter-plus_sd15.safetensors"
+      }
+    },
+    {
+      "id": "clip-vision-image-encoder",
+      "role": "clip-vision",
+      "fileName": "model.safetensors",
+      "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/image_encoder/model.safetensors?download=true",
+      "size": 2528373448,
+      "sizeBytes": 2528373448,
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "kind": "file",
+      "destination": "clip-vision/model.safetensors",
+      "licenseId": "apache-2.0",
+      "source": {
+        "url": "https://huggingface.co/h94/IP-Adapter/resolve/9bf28b38530e55ffa91c6d82e5161a982c22f284/models/image_encoder/model.safetensors?download=true"
+      },
+      "install": {
+        "mode": "file",
+        "destination": "clip-vision/model.safetensors"
+      }
+    }
+  ]
+}
