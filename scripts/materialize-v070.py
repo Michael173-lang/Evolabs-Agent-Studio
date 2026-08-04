@@ -13,14 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.7.0"
 SHA256 = "ca10b6e443fb34fdb9f23a25854629d5085fde59c11c2d0f3e0a78bac9128e00"
 PARTS = ROOT / "scripts" / ".v070-payload"
-# This marker intentionally retriggers the branch materialization workflow.
 
 
 def main() -> int:
     encoded = "".join(path.read_text(encoding="ascii").strip() for path in sorted(PARTS.glob("part-*.txt")))
     raw = lzma.decompress(base64.b64decode(encoded))
-    if hashlib.sha256(raw).hexdigest() != SHA256:
-        raise RuntimeError("Evolabs v0.7.0 payload verification failed.")
+    actual_sha256 = hashlib.sha256(raw).hexdigest()
+    if actual_sha256 != SHA256:
+        decoded = json.loads(raw.decode("utf-8"))
+        raise RuntimeError(
+            f"Evolabs v0.7.0 payload verification failed: expected={SHA256}, "
+            f"actual={actual_sha256}, files={len(decoded)}"
+        )
     files = json.loads(raw.decode("utf-8"))
     for relative, content in files.items():
         target = ROOT / relative
