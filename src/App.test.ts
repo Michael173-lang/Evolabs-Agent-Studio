@@ -33,6 +33,7 @@ describe('render scene reconciliation', () => {
 describe('AI workflow gating', () => {
   it('keeps legacy runtimes on the honest storyboard-card path', () => {
     const project = createBlankProject();
+    project.settings.visualMode = 'cards';
     const hardware = {
       gpu: 'RTX 3050', vramMb: 4096, ramGb: 12, cpu: 'CPU', profile: 'rtx3050-4gb' as const, runtimeReady: true,
     };
