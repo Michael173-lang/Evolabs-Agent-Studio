@@ -6,7 +6,7 @@ on:
       - "ops/publish-probe-v070"
 
 permissions:
-  actions: read
+  actions: write
   contents: write
 
 concurrency:
@@ -20,6 +20,12 @@ jobs:
     steps:
       - name: Check out probe branch
         uses: actions/checkout@v4
+
+      - name: Cancel redundant queued release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/30932754071/cancel" || true
 
       - name: Capture publish runs and release state
         env:
