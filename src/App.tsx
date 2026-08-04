@@ -294,7 +294,7 @@ function Logo() {
     <div className="evo-brand" aria-label="Evolabs">
       <span className="evo-brand-mark">e</span>
       <span className="evo-brand-name">evolabs</span>
-      <span className="evo-version">Agent Studio 0.6.0</span>
+      <span className="evo-version">Agent Studio 0.7.0</span>
     </div>
   );
 }
@@ -758,8 +758,8 @@ function SettingsPanel({
         <section><h3>全自動輸出</h3><label>作品風格</label><Segmented<ProjectMode> value={project.settings.mode} options={[{ value: 'anime', label: '動漫' }, { value: 'realistic', label: '寫實' }]} onChange={(value) => setSetting('mode', value)} /><label>成片比例</label><Segmented value={project.settings.format} options={[{ value: '9:16', label: '9:16' }, { value: '16:9', label: '16:9' }, { value: '1:1', label: '1:1' }]} onChange={(value) => setSetting('format', value)} /><label>目標長度</label><Segmented value={String(project.settings.targetSeconds)} options={[{ value: '30', label: '30 秒' }, { value: '60', label: '60 秒' }, { value: '90', label: '90 秒' }]} onChange={(value) => setSetting('targetSeconds', Number(value))} /><label>品質</label><Segmented<QualityPreset> value={project.settings.quality} options={[{ value: 'speed', label: '快速' }, { value: 'balanced', label: '平衡' }, { value: 'cinema', label: '精緻' }]} onChange={(value) => setSetting('quality', value)} /></section>
         <section><div className="settings-section-head"><h3>AI Agent 大腦</h3><span className={agentRuntime.available ? 'good' : 'warning'}>{agentRuntime.available ? '自動管理中' : '安全備援'}</span></div><div className="system-card"><BrainCircuit size={18} /><span><strong>{agentRuntime.available ? agentRuntime.model : 'Evolabs 內建代理規劃器'}</strong><small>{agentRuntime.message}</small></span><button type="button" onClick={onRecheckHardware}><RefreshCw size={13} /> 自動修復</button></div><p className="settings-note">Evolabs 會自行安裝並管理 llmster、下載合適模型、啟動本機 API；你不需要另外開啟或設定 LM Studio。</p></section>
         <section><div className="settings-section-head"><h3>硬體與模型</h3><button type="button" onClick={onRecheckHardware}><RefreshCw size={13} /> 重新檢查</button></div><div className="system-card"><Cpu size={18} /><span><strong>{hardware.gpu}</strong><small>{hardware.vramMb ? `${Math.round(hardware.vramMb / 1024)} GB VRAM・${hardware.ramGb} GB RAM` : hardware.cpu}</small></span><em className={hardware.runtimeReady ? 'good' : 'warning'}>{hardware.runtimeReady ? '引擎就緒' : '需要修復'}</em></div><div className="model-list">{packs.map((pack) => <div key={pack.id}><span className={`model-dot ${pack.status}`} /><span><strong>{pack.name}</strong><small>{pack.message || pack.version || pack.status}</small></span><em>{pack.status === 'ready' ? '已就緒' : pack.status === 'unavailable' ? '不支援' : '未安裝'}</em></div>)}</div>{!aiImagesReady(project, hardware) && <button className="settings-primary" type="button" onClick={onInstallModel} disabled={Boolean(modelInstall && !terminalInstall(modelInstall))}>{modelInstall && !terminalInstall(modelInstall) ? `模型下載中 ${Math.round(modelInstall.progress)}%` : '安裝目前風格的 AI 畫面模型'}</button>}</section>
-        <section><div className="settings-section-head"><h3>自動更新</h3><span className={updateInfo?.configured ? 'good' : 'warning'}>{updateInfo?.configured ? '已啟用' : '待首次綁定'}</span></div><div className="system-card"><Download size={18} /><span><strong>{updateInfo?.available ? `可更新至 ${updateInfo.version}` : `Evolabs ${updateInfo?.currentVersion || '0.6.0'}`}</strong><small>{updateInfo?.message || '檢查更新後會在程式內下載、安裝並重啟。'}</small></span></div><div className="settings-inline-actions"><button type="button" onClick={onCheckUpdate}><RefreshCw size={13} /> 檢查更新</button>{updateInfo?.available && <button className="settings-primary compact" type="button" onClick={onInstallUpdate}>更新並重啟</button>}</div><p className="settings-note">這版已改成簽章式自動更新架構。第一次發佈時綁定 GitHub Releases 或 Cloudflare R2；之後不用再手動替換 EXE 或執行建置器。</p></section>
-        <div className="settings-footer">Evolabs 0.6.0 · Agent Studio · Self-managed runtime</div>
+        <section><div className="settings-section-head"><h3>自動更新</h3><span className={updateInfo?.configured ? 'good' : 'warning'}>{updateInfo?.configured ? '已啟用' : '待首次綁定'}</span></div><div className="system-card"><Download size={18} /><span><strong>{updateInfo?.available ? `可更新至 ${updateInfo.version}` : `Evolabs ${updateInfo?.currentVersion || '0.7.0'}`}</strong><small>{updateInfo?.message || '檢查更新後會在程式內下載、安裝並重啟。'}</small></span></div><div className="settings-inline-actions"><button type="button" onClick={onCheckUpdate}><RefreshCw size={13} /> 檢查更新</button>{updateInfo?.available && <button className="settings-primary compact" type="button" onClick={onInstallUpdate}>更新並重啟</button>}</div><p className="settings-note">這版已改成簽章式自動更新架構。第一次發佈時綁定 GitHub Releases 或 Cloudflare R2；之後不用再手動替換 EXE 或執行建置器。</p></section>
+        <div className="settings-footer">Evolabs 0.7.0 · Agent Studio · Self-managed runtime</div>
       </aside>
     </div>
   );
@@ -843,7 +843,7 @@ export default function App() {
       setHydrated(true);
     });
     const updateTimer = window.setTimeout(() => {
-      void checkAppUpdate().then(setUpdateInfo).catch((error) => setUpdateInfo({ configured: false, available: false, currentVersion: '0.6.0', message: errorMessage(error) }));
+      void checkAppUpdate().then(setUpdateInfo).catch((error) => setUpdateInfo({ configured: false, available: false, currentVersion: '0.7.0', message: errorMessage(error) }));
     }, 1200);
     return () => { disposed = true; window.clearTimeout(updateTimer); };
   }, [commitProject, demoMode]);

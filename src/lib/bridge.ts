@@ -41,7 +41,7 @@ const browserProfile: HardwareProfile = {
   cpu: 'Intel Core i5',
   profile: 'rtx3050-4gb',
   runtimeReady: true,
-  runtimeVersion: '0.6.0-demo',
+  runtimeVersion: '0.7.0-demo',
   aiReady: false,
   aiProvider: '瀏覽器 Demo',
   capabilities: {
@@ -57,7 +57,7 @@ const browserProfile: HardwareProfile = {
     imageToVideo: false,
   },
   modelPacks: [
-    { id: 'functional-core', name: '快速分鏡核心', status: 'ready', version: '0.6.0-demo' },
+    { id: 'functional-core', name: '快速分鏡核心', status: 'ready', version: '0.7.0-demo' },
     { id: 'anime-core', name: '動漫 AI 畫面', status: 'missing', message: '瀏覽器 Demo 不會載入本機模型。' },
     { id: 'realistic-core', name: '寫實 AI 畫面', status: 'missing', message: '瀏覽器 Demo 不會載入本機模型。' },
   ],
@@ -585,7 +585,7 @@ export async function checkAppUpdate(): Promise<AppUpdateInfo> {
     return {
       configured: false,
       available: false,
-      currentVersion: '0.6.0-preview',
+      currentVersion: '0.7.0-preview',
       message: '瀏覽器預覽不會安裝桌面更新。',
     };
   }

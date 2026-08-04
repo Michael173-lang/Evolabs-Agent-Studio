@@ -1,32 +1,38 @@
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 
 ROOT = Path(__file__).resolve().parents[1]
 ICON_DIR = ROOT / "src-tauri" / "icons"
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 
 def render(size: int) -> Image.Image:
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    margin = round(size * 0.035)
+    margin = max(1, round(size * 0.035))
     draw.rounded_rectangle(
         (margin, margin, size - margin, size - margin),
-        radius=round(size * 0.22),
-        fill="#090909",
+        radius=round(size * 0.19),
+        fill="#101010",
     )
-    font = ImageFont.truetype(FONT, round(size * 0.72))
-    box = draw.textbbox((0, 0), "e", font=font)
-    width = box[2] - box[0]
-    height = box[3] - box[1]
-    draw.text(
-        ((size - width) / 2, (size - height) / 2 - box[1] - size * 0.018),
-        "e",
-        font=font,
-        fill="#F5F5F5",
+
+    left = round(size * 0.285)
+    right = round(size * 0.725)
+    top = round(size * 0.265)
+    thickness = max(2, round(size * 0.095))
+    middle_width = round((right - left) * 0.78)
+    bottom = round(size * 0.735)
+    fill = "#F2F2EE"
+
+    draw.rounded_rectangle((left, top, right, top + thickness), radius=thickness // 3, fill=fill)
+    draw.rounded_rectangle(
+        (left, round(size * 0.455), left + middle_width, round(size * 0.455) + thickness),
+        radius=thickness // 3,
+        fill=fill,
     )
+    draw.rounded_rectangle((left, bottom - thickness, right, bottom), radius=thickness // 3, fill=fill)
+    draw.rounded_rectangle((left, top, left + thickness, bottom), radius=thickness // 3, fill=fill)
     return image
 
 
