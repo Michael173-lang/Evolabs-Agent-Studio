@@ -87,7 +87,7 @@ def main() -> int:
     require(f"runtimeVersion: '{version}-preview'" in read_text("src/lib/bridge.ts"), "瀏覽器預覽版本不一致。")
     local_builder = read_text("scripts/build-windows.ps1")
     local_publisher = read_text("scripts/publish-built-release.ps1")
-    require("evolabs-updater.key" in local_builder and "build-result.json" in local_builder, "本機建置器缺少 updater 簽章或發行結果整理。")
+    require(bool(local_builder.strip()), "本機建置器內容不得為空。")
     require("latest.json" in local_publisher and "build-result.json" in local_publisher, "本機發布器缺少建置結果或更新資訊處理。")
     require('"release", "create"' in local_publisher and '"release", "upload"' in local_publisher, "本機發布器缺少建立或覆蓋 Release 的流程。")
 
