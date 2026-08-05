@@ -7,7 +7,7 @@ export function Brand({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <span className="brand__copy">
           <strong>Evolabs</strong>
-          <small>Agent Studio 0.8.0-beta.1</small>
+          <small>Agent Studio 0.8.0-beta.2</small>
         </span>
       )}
     </div>

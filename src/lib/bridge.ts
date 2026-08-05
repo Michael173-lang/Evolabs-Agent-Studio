@@ -41,7 +41,7 @@ const browserProfile: HardwareProfile = {
   cpu: '瀏覽器預覽',
   profile: 'low-vram',
   runtimeReady: false,
-  runtimeVersion: '0.8.0-beta.1-preview',
+  runtimeVersion: '0.8.0-beta.2-preview',
   aiReady: false,
   aiProvider: undefined,
   capabilities: {
@@ -518,7 +518,7 @@ export async function checkAppUpdate(): Promise<AppUpdateInfo> {
     return {
       configured: false,
       available: false,
-      currentVersion: '0.8.0-beta.1-preview',
+      currentVersion: '0.8.0-beta.2-preview',
       message: '瀏覽器預覽不會安裝桌面更新。',
     };
   }

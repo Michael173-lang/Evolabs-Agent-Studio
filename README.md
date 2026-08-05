@@ -1,6 +1,6 @@
 # Evolabs Agent Studio
 
-**Evolabs Agent Studio 0.8.0-beta.1** 是本機優先的 AI 短劇製作工作室。它把劇本理解、製作討論、角色與場景規格、分鏡、真正的影片模型工作、逐鏡審核、聲音與剪輯放在同一個桌面應用程式中。
+**Evolabs Agent Studio 0.8.0-beta.2** 是本機優先的 AI 短劇製作工作室。它把劇本理解、製作討論、角色與場景規格、分鏡、真正的影片模型工作、逐鏡審核、聲音與剪輯放在同一個桌面應用程式中。
 
 本 Beta 的核心原則是：**沒有真實模型回覆，就不顯示 AI 對話；沒有真正影片模型輸出，就不標示為 AI 影片。**
 
@@ -64,7 +64,7 @@ Evolabs 會拒絕只輸出 PNG／JPG 的工作流。逐鏡輸出名稱綁定可�
 
 製作工作區提供角色身份參考圖管理。參考圖必須由使用者明確匯入；更換或移除後，所有相關鏡頭、人工核准與舊成片狀態都會失效，必須重新生成及審核。
 
-0.8.0-beta.1 目前採用：
+0.8.0-beta.2 目前採用：
 
 - 生成前的嚴格角色與鏡頭規格；
 - 影片檔確定性檢查；
@@ -88,7 +88,7 @@ Evolabs 將兩種模型服務分開管理：
 
 ## 介面與文案
 
-0.8.0-beta.1 重製了開始製作、製作工作區、模型與本機執行環境、設定與鏡頭審核頁面：
+0.8.0-beta.2 持續重製開始製作、製作工作區、模型與本機執行環境、設定、空間管理與鏡頭審核頁面：
 
 - 強制橫向文字排版，避免逐字直排；
 - 所有 Grid／Flex 內容允許正確縮放與換行；
@@ -107,11 +107,14 @@ Evolabs 將兩種模型服務分開管理：
 SETUP_AUTO_UPDATE.bat
 ```
 
-後續發布使用：
+本機建置與發布分成兩個步驟：
 
 ```text
-PUBLISH_UPDATE.bat
+1_BUILD_AND_TEST.bat
+2_PUBLISH_RELEASE.bat
 ```
+
+第一個腳本完成測試、Engine、NSIS 與 updater 簽章；第二個腳本只上傳已建置的發行檔案，不會重新編譯。
 
 更新私鑰存放在：
 
@@ -138,11 +141,11 @@ Engine 測試：
 PYTHONPATH=engine/src python -m pytest engine/tests -q
 ```
 
-Windows 發行 CI 另外執行 Engine 打包、圖示生成、Tauri NSIS 建置、更新簽章與 `latest.json` 發布。
+`1_BUILD_AND_TEST.bat` 在本機執行 Engine 打包、圖示生成、Tauri NSIS 建置與更新簽章；`2_PUBLISH_RELEASE.bat` 產生 `latest.json` 並上傳發行檔案。
 
 ## Beta 邊界
 
-0.8.0-beta.1 是架構與交互重製版。升為穩定版前，必須完成至少一套真實影片工作流的 Windows 實機端到端驗證，包括：
+0.8.0-beta.2 是架構、交互、受管理影片引擎與儲存管理重製版。升為穩定版前，必須完成至少一套真實影片工作流的 Windows 實機端到端驗證，包括：
 
 - Agent 真實回答與修改提案；
 - 多鏡頭影片生成；
@@ -151,4 +154,4 @@ Windows 發行 CI 另外執行 Engine 打包、圖示生成、Tauri NSIS 建置�
 - 最終成片輸出；
 - RTX 3050 4 GB 的實際相容性紀錄。
 
-更多技術細節見 [ARCHITECTURE.md](ARCHITECTURE.md)、[RELEASE_NOTES_v0.8.0-beta.1.md](RELEASE_NOTES_v0.8.0-beta.1.md) 與 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+更多技術細節見 [ARCHITECTURE.md](ARCHITECTURE.md)、[RELEASE_NOTES_v0.8.0-beta.2.md](RELEASE_NOTES_v0.8.0-beta.2.md) 與 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

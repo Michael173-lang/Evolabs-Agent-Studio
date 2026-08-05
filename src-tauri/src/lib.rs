@@ -1,6 +1,8 @@
 mod agent_models;
 mod commands;
+mod comfyui_manager;
 mod runtime_manager;
+mod storage_manager;
 mod video_providers;
 
 use tauri::Manager;
@@ -47,6 +49,16 @@ pub fn run() {
             video_providers::get_video_provider_status,
             video_providers::configure_comfyui_provider,
             video_providers::clear_video_provider,
+            comfyui_manager::get_managed_comfyui_status,
+            comfyui_manager::install_managed_comfyui,
+            comfyui_manager::repair_managed_comfyui,
+            comfyui_manager::start_managed_comfyui,
+            comfyui_manager::stop_managed_comfyui,
+            comfyui_manager::uninstall_managed_comfyui,
+            storage_manager::get_storage_overview,
+            storage_manager::remove_storage_item,
+            storage_manager::remove_old_model_versions,
+            storage_manager::reveal_storage_item,
             commands::check_app_update,
             commands::install_app_update,
         ])

@@ -32,7 +32,7 @@ import {
   startRenderJob,
 } from './lib/bridge';
 import { createId } from './lib/id';
-import { buildAgentConversationHistory, isVisibleDialogueMessage } from './lib/agentConversation';
+import { buildAgentConversationHistory, isVerifiedAssistantMessage, isVisibleDialogueMessage } from './lib/agentConversation';
 import { applyAgentProposal } from './lib/projectChanges';
 import { getVideoPreflightIssue } from './lib/videoPreflight';
 import {
@@ -54,6 +54,18 @@ import {
   runAgentStageV3,
   testAgentModel,
 } from './lib/studioBridge';
+import {
+  getManagedComfyUiStatus,
+  getStorageOverview,
+  installManagedComfyUi,
+  removeOldModelVersions,
+  removeStorageItem,
+  repairManagedComfyUi,
+  revealStorageItem,
+  startManagedComfyUi,
+  stopManagedComfyUi,
+  uninstallManagedComfyUi,
+} from './lib/resourceBridge';
 import { createBlankProject, sampleStory } from './state/defaultProject';
 import ModelsView from './studio/ModelsView';
 import ProductionView from './studio/ProductionView';
@@ -62,6 +74,7 @@ import StartView from './studio/StartView';
 import { Brand, StatusPill } from './studio/ui';
 import type {
   AgentChangeProposal,
+  AgentConversationResponse,
   AgentId,
   AgentMessage,
   AgentModelCatalog,
@@ -71,14 +84,17 @@ import type {
   AgentTaskState,
   AgentWorkspace,
   AppUpdateInfo,
+  ConversationProgress,
   ConversationTarget,
   EvolabsProject,
   HardwareProfile,
+  ManagedComfyUiStatus,
   ProductionBible,
   RenderControlAction,
   RenderJobSnapshot,
   RuntimeCapabilities,
   RuntimeSetupSnapshot,
+  StorageOverview,
   Scene,
   SystemActivityEvent,
   VideoProviderStatus,
@@ -145,7 +161,7 @@ const defaultVideoProvider: VideoProviderStatus = {
   },
   detectedModels: [],
   compatibility: 'unknown',
-  message: '尚未設定真正的影片模型服務。',
+  message: '尚未設定 AI 影片模型服務。',
 };
 
 const defaultRuntimeSetup: RuntimeSetupSnapshot = {
@@ -156,18 +172,32 @@ const defaultRuntimeSetup: RuntimeSetupSnapshot = {
   message: '等待檢查。',
   updatedAtUnixMs: Date.now(),
   steps: [
-    { id: 'system', title: '檢查電腦與核心', state: 'queued', detail: '等待開始' },
-    { id: 'llmster', title: '啟動 Agent 服務', state: 'queued', detail: '等待開始' },
-    { id: 'model', title: '準備 Agent 模型', state: 'queued', detail: '等待開始' },
-    { id: 'load', title: '載入模型', state: 'queued', detail: '等待開始' },
-    { id: 'verify', title: '驗證模型回覆', state: 'queued', detail: '等待開始' },
+    { id: 'system', title: '檢查系統需求', state: 'queued', detail: '尚未開始' },
+    { id: 'llmster', title: '啟動 Agent 服務', state: 'queued', detail: '尚未開始' },
+    { id: 'model', title: '準備 Agent 模型', state: 'queued', detail: '尚未開始' },
+    { id: 'load', title: '載入模型', state: 'queued', detail: '尚未開始' },
+    { id: 'verify', title: '驗證模型回覆', state: 'queued', detail: '尚未開始' },
   ],
+};
+
+const defaultManagedComfyUi: ManagedComfyUiStatus = {
+  installed: false,
+  running: false,
+  available: false,
+  state: 'not-installed',
+  progress: 0,
+  message: '尚未安裝 AI 影片引擎。',
+  downloadedBytes: 0,
+  totalBytes: 0,
+  installedBytes: 0,
+  endpoint: 'http://127.0.0.1:8188',
+  steps: [],
 };
 
 const defaultUpdate: AppUpdateInfo = {
   configured: false,
   available: false,
-  currentVersion: '0.8.0-beta.1',
+  currentVersion: '0.8.0-beta.2',
   message: '尚未檢查更新。',
 };
 
@@ -183,6 +213,24 @@ const productionStages: AgentStage[] = [
   'director-review',
 ];
 const stageByAgent = new Map<AgentId, AgentStage>(productionStages.map((stage) => [stageAgent[stage], stage]));
+const productionMeetingOrder: AgentId[] = [
+  'screenwriter',
+  'art-director',
+  'ip-designer',
+  'character-designer',
+  'scene-designer',
+  'storyboard-artist',
+  'sound-director',
+  'director',
+];
+const defaultConversationProgress: ConversationProgress = {
+  active: false,
+  target: 'screenwriter',
+  currentIndex: 0,
+  total: 0,
+  phase: 'idle',
+  detail: '等待訊息。',
+};
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -208,13 +256,29 @@ function activeViewForProject(project: EvolabsProject): StudioView {
   return project.productionBible?.script || project.characters.length || project.scenes.length ? 'production' : 'start';
 }
 
-function userMessage(text: string, agentId?: AgentId, conversationTarget: ConversationTarget | undefined = agentId): AgentMessage {
-  return { id: createId('message'), agentId, sender: '你', text, kind: 'user', createdAt: now(), conversationTarget };
+function userMessage(
+  text: string,
+  agentId?: AgentId,
+  conversationTarget: ConversationTarget | undefined = agentId,
+  attempt = 1,
+): AgentMessage {
+  return {
+    id: createId('message'),
+    agentId,
+    sender: '你',
+    text,
+    kind: 'user',
+    createdAt: now(),
+    conversationTarget,
+    deliveryState: 'sending',
+    attempt,
+    completedAgentIds: [],
+  };
 }
 
 function assistantMessage(
   agentId: AgentId,
-  response: Pick<AgentStageResponse, 'assistantReply' | 'evidence'>,
+  response: Pick<AgentStageResponse, 'assistantReply' | 'evidence'> & Partial<Pick<AgentConversationResponse, 'coordinationRequests'>>,
   proposalId?: string,
   conversationTarget?: ConversationTarget,
 ): AgentMessage {
@@ -228,7 +292,16 @@ function assistantMessage(
     evidence: response.evidence,
     proposalId,
     conversationTarget,
+    coordinationRequests: response.coordinationRequests,
   };
+}
+
+function conversationErrorIsRetryable(message: string): boolean {
+  return /(?:HTTP 400|HTTP 408|HTTP 409|HTTP 425|HTTP 429|HTTP 5\d\d|逾時|timeout|temporar|連線|connection|context|token|length|過大|assistantReply|acknowledgement|JSON|格式|結構驗證)/iu.test(message);
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function activityEvent(
@@ -267,6 +340,52 @@ function addDialogue(project: EvolabsProject, message: AgentMessage): EvolabsPro
       : '空白或不受支援的訊息不得寫入對話。');
   }
   return updateWorkspace(project, (workspace) => ({ ...workspace, messages: [...workspace.messages, message].slice(-500) }));
+}
+
+function patchDialogue(project: EvolabsProject, messageId: string, patch: Partial<AgentMessage>): EvolabsProject {
+  return updateWorkspace(project, (workspace) => ({
+    ...workspace,
+    messages: workspace.messages.map((message) => message.id === messageId ? { ...message, ...patch } : message),
+  }));
+}
+
+function conversationContext(
+  project: EvolabsProject,
+  videoProvider: VideoProviderStatus,
+  target: ConversationTarget,
+  participants: AgentId[],
+  currentIndex: number,
+  completedAgentIds: AgentId[],
+): unknown {
+  const currentSpeaker = participants[currentIndex];
+  const teamMemory = ensureWorkspace(project).messages
+    .filter(isVerifiedAssistantMessage)
+    .slice(-18)
+    .map((message) => ({
+      agentId: message.agentId,
+      agentName: message.sender,
+      conversationTarget: message.conversationTarget,
+      conclusion: message.text.slice(0, 1_200),
+      objective: message.evidence?.acknowledgement?.objective,
+      missingInformation: message.evidence?.acknowledgement?.missingInformation ?? [],
+      createdAt: message.createdAt,
+    }));
+  return {
+    ...(stageContext(project, videoProvider) as Record<string, unknown>),
+    teamMemory,
+    collaboration: {
+      mode: target === 'production-meeting' ? 'production-meeting' : 'direct',
+      teamRoster: agentRoster.map((agent) => ({ id: agent.id, name: agent.name, title: agent.title })),
+      currentSpeaker,
+      participantIndex: currentIndex,
+      participantTotal: participants.length,
+      completedSpeakers: completedAgentIds,
+      remainingSpeakers: participants.slice(currentIndex + 1),
+      instruction: target === 'production-meeting'
+        ? '閱讀前面成員與 teamMemory 的已驗證回覆。若前序成員提出的缺口屬於你的職責，請直接補齊；不得重複詢問。將後續事項明確交接，並由總導演最後統整與核准。'
+        : '先閱讀 teamMemory，延續其他成員已確認的內容；跨專業事項必須交接給對應成員，不得將團隊可處理的工作退回給使用者。',
+    },
+  };
 }
 
 function setTask(
@@ -383,6 +502,9 @@ export default function StudioApp() {
   const [hardware, setHardware] = useState<HardwareProfile>(defaultHardware);
   const [runtimeSetup, setRuntimeSetup] = useState<RuntimeSetupSnapshot>(defaultRuntimeSetup);
   const [videoProvider, setVideoProvider] = useState<VideoProviderStatus>(defaultVideoProvider);
+  const [managedComfyUi, setManagedComfyUi] = useState<ManagedComfyUiStatus>(defaultManagedComfyUi);
+  const [storageOverview, setStorageOverview] = useState<StorageOverview | null>(null);
+  const [resourceBusy, setResourceBusy] = useState('');
   const [update, setUpdate] = useState<AppUpdateInfo>(defaultUpdate);
   const [refreshing, setRefreshing] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -392,7 +514,10 @@ export default function StudioApp() {
   const [selectedTarget, setSelectedTarget] = useState<ConversationTarget>('screenwriter');
   const [notice, setNotice] = useState('');
   const [fatalError, setFatalError] = useState('');
+  const [conversationProgress, setConversationProgress] = useState<ConversationProgress>(defaultConversationProgress);
   const runTokenRef = useRef(0);
+  const stopConversationRef = useRef(false);
+  const autoStartComfyRef = useRef(false);
 
   const commitProject = useCallback((next: EvolabsProject) => {
     projectRef.current = next;
@@ -418,11 +543,12 @@ export default function StudioApp() {
 
   const refreshEnvironment = useCallback(async () => {
     setRefreshing(true);
-    const [hardwareResult, catalogResult, runtimeResult, videoResult] = await Promise.allSettled([
+    const [hardwareResult, catalogResult, runtimeResult, videoResult, comfyResult] = await Promise.allSettled([
       getHardwareProfile(),
       getAgentModels(),
       getAiRuntimeSetup(),
       getVideoProviderStatus(),
+      getManagedComfyUiStatus(),
     ]);
     if (hardwareResult.status === 'fulfilled') setHardware(hardwareResult.value);
     if (catalogResult.status === 'fulfilled') {
@@ -434,8 +560,102 @@ export default function StudioApp() {
     }
     if (runtimeResult.status === 'fulfilled') setRuntimeSetup(runtimeResult.value);
     if (videoResult.status === 'fulfilled') setVideoProvider(videoResult.value);
+    if (comfyResult.status === 'fulfilled') setManagedComfyUi(comfyResult.value);
     setRefreshing(false);
   }, [selectedModelId]);
+
+  const refreshStorage = useCallback(async (quiet = false) => {
+    if (!quiet) setResourceBusy('storage-scan');
+    try {
+      const overview = await getStorageOverview();
+      setStorageOverview(overview);
+      return overview;
+    } catch (error) {
+      setFatalError(`無法讀取儲存空間資訊：${errorMessage(error)}`);
+      throw error;
+    } finally {
+      if (!quiet) setResourceBusy('');
+    }
+  }, []);
+
+  const runManagedComfyAction = useCallback(async (
+    action: 'install' | 'repair' | 'start' | 'stop',
+  ) => {
+    setResourceBusy(`comfy-${action}`);
+    setFatalError('');
+    try {
+      const next = action === 'install'
+        ? await installManagedComfyUi()
+        : action === 'repair'
+          ? await repairManagedComfyUi()
+          : action === 'start'
+            ? await startManagedComfyUi()
+            : await stopManagedComfyUi();
+      setManagedComfyUi(next);
+      setNotice(next.message);
+    } catch (error) {
+      setFatalError(errorMessage(error));
+    } finally {
+      setResourceBusy('');
+    }
+  }, []);
+
+  const uninstallComfyUi = useCallback(async (preserveModels: boolean) => {
+    setResourceBusy('comfy-uninstall');
+    setFatalError('');
+    try {
+      const result = await uninstallManagedComfyUi(preserveModels);
+      setNotice(`${result.message}${result.freedBytes ? ` 已釋放 ${(result.freedBytes / 1024 / 1024 / 1024).toFixed(2)} GB。` : ''}`);
+      setManagedComfyUi(await getManagedComfyUiStatus());
+      await refreshStorage(true);
+    } catch (error) {
+      setFatalError(errorMessage(error));
+    } finally {
+      setResourceBusy('');
+    }
+  }, [refreshStorage]);
+
+  const removeStoredItem = useCallback(async (itemId: string, confirmation: string) => {
+    setResourceBusy(`storage-remove:${itemId}`);
+    setFatalError('');
+    try {
+      const before = storageOverview?.items.find((item) => item.id === itemId)?.bytes ?? 0;
+      const overview = await removeStorageItem(itemId, confirmation);
+      setStorageOverview(overview);
+      setNotice(before ? `已完成清理，約釋放 ${(before / 1024 / 1024 / 1024).toFixed(2)} GB。` : '已完成清理。');
+      if (itemId === 'managed-comfyui' || itemId.startsWith('comfy-model:')) {
+        setManagedComfyUi(await getManagedComfyUiStatus());
+      }
+    } catch (error) {
+      setFatalError(errorMessage(error));
+      throw error;
+    } finally {
+      setResourceBusy('');
+    }
+  }, [storageOverview]);
+
+  const removeOldStoredModelVersions = useCallback(async () => {
+    setResourceBusy('storage-old-models');
+    setFatalError('');
+    try {
+      const result = await removeOldModelVersions();
+      setStorageOverview(result.overview);
+      setNotice(`${result.message}${result.freedBytes ? ` 已釋放 ${(result.freedBytes / 1024 / 1024 / 1024).toFixed(2)} GB。` : ''}`);
+    } catch (error) {
+      setFatalError(errorMessage(error));
+      throw error;
+    } finally {
+      setResourceBusy('');
+    }
+  }, []);
+
+  const revealStoredItem = useCallback(async (itemId: string) => {
+    try {
+      await revealStorageItem(itemId);
+    } catch (error) {
+      setFatalError(errorMessage(error));
+    }
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -532,6 +752,39 @@ export default function StudioApp() {
       window.clearInterval(timer);
     };
   }, [refreshEnvironment, runtimeSetup.state]);
+
+
+  useEffect(() => {
+    if (!['installing', 'repairing', 'starting', 'uninstalling'].includes(managedComfyUi.state)) return;
+    let disposed = false;
+    const timer = window.setInterval(() => {
+      void getManagedComfyUiStatus().then((status) => {
+        if (disposed) return;
+        setManagedComfyUi(status);
+        if (!['installing', 'repairing', 'starting', 'uninstalling'].includes(status.state)) {
+          window.clearInterval(timer);
+          void refreshEnvironment();
+          void refreshStorage(true);
+        }
+      }).catch(() => undefined);
+    }, 1100);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [managedComfyUi.state, refreshEnvironment, refreshStorage]);
+
+  useEffect(() => {
+    if (!hydrated || autoStartComfyRef.current) return;
+    if (!managedComfyUi.installed || managedComfyUi.running || managedComfyUi.state !== 'idle') return;
+    autoStartComfyRef.current = true;
+    void runManagedComfyAction('start');
+  }, [hydrated, managedComfyUi.installed, managedComfyUi.running, managedComfyUi.state, runManagedComfyAction]);
+
+  useEffect(() => {
+    if (view !== 'settings' || storageOverview) return;
+    void refreshStorage();
+  }, [refreshStorage, storageOverview, view]);
 
   const setSelectedModelId = useCallback((modelId: string) => {
     const normalized = modelId.trim() || 'auto';
@@ -722,7 +975,7 @@ export default function StudioApp() {
       });
       commitProject(working);
       await persistNow(working);
-      setNotice('編劇已完成真實模型交付。你可以先交流修改，再執行完整製片團隊。');
+      setNotice('編劇模型已完成交付。你可以先確認或修改內容，再執行完整製片流程。');
     } catch (error) {
       if (runTokenRef.current !== token) return;
       const message = errorMessage(error);
@@ -781,7 +1034,13 @@ export default function StudioApp() {
     const token = ++runTokenRef.current;
     const maximumCorrectionRounds = 2;
     let correctionRound = 0;
-    let startIndex = 1; // 編劇已由「交給編劇」完成；只有導演退件時才可能重跑。
+    const currentWorkspace = ensureWorkspace(working);
+    const resumableAgent = currentWorkspace.state === 'paused' || currentWorkspace.state === 'failed'
+      ? currentWorkspace.activeAgentId
+      : undefined;
+    const resumableStage = resumableAgent ? stageByAgent.get(resumableAgent) : undefined;
+    let startIndex = resumableStage ? Math.max(1, productionStages.indexOf(resumableStage)) : 1;
+    // 編劇通常已由「交給編劇」完成；受阻或失敗後會從原階段續跑。
     setWorkState('team');
     setFatalError('');
     setNotice('');
@@ -791,7 +1050,7 @@ export default function StudioApp() {
       if (runTokenRef.current !== token) throw new Error('製作流程已被新的工作取代。');
       const agentId = stageAgent[stage];
       const startedAt = now();
-      working = setTask(working, agentId, 'working', 8, '正在呼叫真實模型', { startedAt });
+      working = setTask(working, agentId, 'working', 8, '正在呼叫模型', { startedAt });
       working = addActivity(working, activityEvent('agent', 'working', `${agentNames.get(agentId)}開始執行`, `專業階段：${stage}`, { agentId }));
       commitProject(working);
       await persistNow(working);
@@ -847,7 +1106,7 @@ export default function StudioApp() {
           commitProject(working);
           await persistNow(working);
           setNotice(correctionRound
-            ? `製片團隊已完成 ${correctionRound} 輪真實模型修正並通過總導演驗收。`
+            ? `製片團隊已完成 ${correctionRound} 輪模型修正並通過總導演驗收。`
             : '製片團隊交付已完成並通過總導演驗收。');
           return;
         }
@@ -914,33 +1173,187 @@ export default function StudioApp() {
     }
   }, [applyStageArtifact, commitProject, persistNow, requireAgentRuntime, selectedModelId, videoProvider]);
 
-  const sendMessage = useCallback(async (target: ConversationTarget, text: string) => {
+  const sendMessage = useCallback(async (
+    target: ConversationTarget,
+    text: string,
+    options: { attempt?: number; messageId?: string } = {},
+  ) => {
     if (!requireAgentRuntime()) throw new Error('本機 AI 執行環境未連線。');
+    const trimmed = text.trim();
+    if (!trimmed) throw new Error('請先輸入要傳送的訊息。');
+
     setWorkState('chat');
     setFatalError('');
+    setNotice('');
+    stopConversationRef.current = false;
     let working = projectRef.current;
-    const currentUserMessage = userMessage(text, target === 'production-meeting' ? undefined : target, target);
-    working = addDialogue(working, currentUserMessage);
+    const existingMessage = options.messageId
+      ? ensureWorkspace(working).messages.find((entry) => entry.id === options.messageId && entry.kind === 'user')
+      : undefined;
+    const currentUserMessage = existingMessage ?? userMessage(
+      trimmed,
+      target === 'production-meeting' ? undefined : target,
+      target,
+      options.attempt ?? 1,
+    );
+    if (existingMessage) {
+      working = patchDialogue(working, existingMessage.id, {
+        deliveryState: 'sending',
+        failure: undefined,
+        attempt: options.attempt ?? (existingMessage.attempt ?? 1) + 1,
+        completedAgentIds: [],
+        createdAt: now(),
+      });
+    } else {
+      working = addDialogue(working, currentUserMessage);
+    }
     working = updateWorkspace(working, (workspace) => ({ ...workspace, activeConversation: target }));
     commitProject(working);
+
+    type QueueItem = { agentId: AgentId; prompt: string; requestedBy?: AgentId; revisit?: boolean };
+    const queue: QueueItem[] = (target === 'production-meeting' ? productionMeetingOrder : [target]).map((agentId) => ({
+      agentId,
+      prompt: trimmed,
+    }));
+    const callCounts = new Map<AgentId, number>();
+    const completedAgentIds = new Set<AgentId>();
+    const failedAgents: Array<{ agentId: AgentId; error: string }> = [];
+    let successfulReplies = 0;
+    let processedCalls = 0;
+    const maximumCalls = 16;
+
+    setConversationProgress({
+      active: true,
+      target,
+      currentIndex: 0,
+      total: queue.length,
+      startedAt: now(),
+      messageId: currentUserMessage.id,
+      phase: 'preparing',
+      detail: target === 'production-meeting'
+        ? '正在建立共享會議紀錄，成員會依專業順序閱讀前序回覆。'
+        : '正在建立對話上下文。',
+    });
     await persistNow(working);
 
-    const participants: AgentId[] = target === 'production-meeting'
-      ? agentRoster.map((agent) => agent.id)
-      : [target];
+    const enqueue = (item: QueueItem) => {
+      const called = callCounts.get(item.agentId) ?? 0;
+      if (called >= 2) return;
+      const duplicate = queue.find((candidate) => candidate.agentId === item.agentId && candidate.revisit === item.revisit);
+      if (duplicate) {
+        if (!duplicate.prompt.includes(item.prompt)) duplicate.prompt = `${duplicate.prompt}\n\n${item.prompt}`.slice(0, 12_000);
+        return;
+      }
+      queue.push(item);
+    };
+
     try {
-      for (const agentId of participants) {
+      while (queue.length && processedCalls < maximumCalls) {
+        if (stopConversationRef.current) break;
+        const item = queue.shift()!;
+        const priorCalls = callCounts.get(item.agentId) ?? 0;
+        if (priorCalls >= 2) continue;
+        callCounts.set(item.agentId, priorCalls + 1);
+
+        const label = agentNames.get(item.agentId) ?? 'AI 製片成員';
+        const estimatedTotal = Math.max(1, processedCalls + queue.length + 1);
+        setConversationProgress((current) => ({
+          ...current,
+          active: true,
+          currentAgentId: item.agentId,
+          currentIndex: processedCalls,
+          total: estimatedTotal,
+          phase: item.requestedBy ? 'requesting' : 'requesting',
+          detail: item.requestedBy
+            ? `${agentNames.get(item.requestedBy) ?? 'AI 成員'}已請${label}補充專業意見。`
+            : `正在等待${label}回覆；本機模型可能需要一些時間。`,
+        }));
+        working = addActivity(working, activityEvent(
+          'agent',
+          'working',
+          item.requestedBy ? `${label}正在處理團隊協作要求` : `正在等待${label}回覆`,
+          item.requestedBy ? item.prompt.slice(0, 800) : `目前進度 ${processedCalls + 1} / ${estimatedTotal}`,
+          { agentId: item.agentId, progress: Math.min(92, 8 + Math.round((processedCalls / estimatedTotal) * 82)) },
+        ));
+        commitProject(working);
+
         const history = buildAgentConversationHistory(
           ensureWorkspace(working).messages,
           target,
           currentUserMessage.id,
+          20,
         );
-        working = addActivity(working, activityEvent('agent', 'working', `正在等待${agentNames.get(agentId)}回覆`, undefined, { agentId }));
-        commitProject(working);
-        const response = await runAgentConversation(agentId, text, stageContext(working, videoProvider), history, selectedModelId);
+        let response: AgentConversationResponse | undefined;
+        let lastFailure = '';
+        for (let transportAttempt = 0; transportAttempt < 2; transportAttempt += 1) {
+          try {
+            if (transportAttempt > 0) {
+              setConversationProgress((current) => ({
+                ...current,
+                phase: 'requesting',
+                detail: `${label}的模型要求正在自動重試。`,
+              }));
+              working = addActivity(working, activityEvent(
+                'agent',
+                'warning',
+                `${label}的模型要求正在自動重試`,
+                lastFailure,
+                { agentId: item.agentId, retryable: true },
+              ));
+              commitProject(working);
+              await delay(650);
+            }
+            response = await runAgentConversation(
+              item.agentId,
+              item.prompt,
+              conversationContext(
+                working,
+                videoProvider,
+                target,
+                [item.agentId, ...queue.map((entry) => entry.agentId)],
+                0,
+                [...completedAgentIds],
+              ),
+              history,
+              selectedModelId,
+            );
+            break;
+          } catch (error) {
+            lastFailure = errorMessage(error);
+            if (transportAttempt === 0 && conversationErrorIsRetryable(lastFailure)) continue;
+            break;
+          }
+        }
+        if (!response) {
+          const failure = lastFailure || `${label}沒有回傳結果。`;
+          failedAgents.push({ agentId: item.agentId, error: failure });
+          processedCalls += 1;
+          working = addActivity(working, activityEvent(
+            'agent',
+            'error',
+            `${label}未完成回覆`,
+            failure,
+            { agentId: item.agentId, retryable: true },
+          ));
+          working = patchDialogue(working, currentUserMessage.id, {
+            deliveryState: successfulReplies ? 'partial' : 'sending',
+            completedAgentIds: [...completedAgentIds],
+            failure,
+          });
+          commitProject(working);
+          await persistNow(working);
+          if (target !== 'production-meeting' && queue.length === 0) throw new Error(failure);
+          continue;
+        }
+
+        setConversationProgress((current) => ({
+          ...current,
+          phase: 'validating',
+          detail: `正在驗證${label}的模型回覆與協作要求。`,
+        }));
         const acknowledgementFailure = acknowledgementIssue(response);
         if (acknowledgementFailure && response.proposal) {
-          throw new Error(`${agentNames.get(agentId)}在尚未確認任務或資訊不足時提出了修改提案；系統已拒絕。`);
+          throw new Error(`${label}在尚未確認任務或資訊不足時提出修改提案；系統已拒絕。`);
         }
         let proposalId: string | undefined;
         if (!acknowledgementFailure && response.proposal) {
@@ -948,33 +1361,143 @@ export default function StudioApp() {
           const proposal: AgentChangeProposal = {
             ...response.proposal,
             id: proposalId,
-            agentId,
+            agentId: item.agentId,
             status: 'pending',
             createdAt: now(),
           };
-          working = updateWorkspace(working, (workspace) => ({ ...workspace, proposals: [...(workspace.proposals ?? []), proposal].slice(-200) }));
-        }
-        working = addDialogue(working, assistantMessage(agentId, response, proposalId, target));
-        working = addActivity(working, activityEvent('agent', acknowledgementFailure ? 'warning' : 'success',
-          acknowledgementFailure ? `${agentNames.get(agentId)}需要補充或確認` : `${agentNames.get(agentId)}已回覆`,
-          acknowledgementFailure ?? response.evidence.requestId, {
-            agentId, requestId: response.evidence.requestId, modelId: response.evidence.modelId, durationMs: response.evidence.latencyMs,
+          working = updateWorkspace(working, (workspace) => ({
+            ...workspace,
+            proposals: [...(workspace.proposals ?? []), proposal].slice(-200),
           }));
-        if (acknowledgementFailure) setNotice(`${agentNames.get(agentId)}：${acknowledgementFailure}`);
+        }
+        working = addDialogue(working, assistantMessage(item.agentId, response, proposalId, target));
+        successfulReplies += 1;
+        processedCalls += 1;
+        completedAgentIds.add(item.agentId);
+
+        const retryDetail = response.evidence.retryCount
+          ? `；相容性重試 ${response.evidence.retryCount} 次`
+          : '';
+        working = addActivity(working, activityEvent(
+          'agent',
+          acknowledgementFailure ? 'warning' : 'success',
+          acknowledgementFailure ? `${label}需要使用者確認` : `${label}已完成回覆`,
+          `${acknowledgementFailure ?? response.evidence.requestId}${retryDetail}`,
+          {
+            agentId: item.agentId,
+            requestId: response.evidence.requestId,
+            modelId: response.evidence.modelId,
+            durationMs: response.evidence.latencyMs,
+          },
+        ));
+
+        for (const coordination of response.coordinationRequests ?? []) {
+          const targetName = agentNames.get(coordination.toAgentId) ?? coordination.toAgentId;
+          const sourceName = label;
+          enqueue({
+            agentId: coordination.toAgentId,
+            requestedBy: item.agentId,
+            prompt: [
+              `${sourceName}提出協作要求：${coordination.request}`,
+              `原因：${coordination.reason}`,
+              `原始使用者要求：${trimmed}`,
+              '請先閱讀共享會議紀錄，直接提供你的專業補充；不要再次要求使用者提供可由團隊推導的內容。',
+            ].join('\n'),
+          });
+          working = addActivity(working, activityEvent(
+            'agent',
+            'info',
+            `${sourceName}已請${targetName}協作`,
+            coordination.reason,
+            { agentId: coordination.toAgentId },
+          ));
+        }
+        if ((response.coordinationRequests?.length ?? 0) > 0 && (callCounts.get(item.agentId) ?? 0) < 2 && !acknowledgementFailure) {
+          enqueue({
+            agentId: item.agentId,
+            revisit: true,
+            prompt: `請閱讀其他成員完成的協作回覆，針對「${trimmed}」提供整合後的新結論。不要重複先前內容。`,
+          });
+        }
+
+        if (acknowledgementFailure) setNotice(`${label}：${acknowledgementFailure}`);
+        working = patchDialogue(working, currentUserMessage.id, {
+          deliveryState: 'sending',
+          completedAgentIds: [...completedAgentIds],
+          failure: undefined,
+        });
         commitProject(working);
         await persistNow(working);
       }
-    } catch (error) {
-      const message = errorMessage(error);
-      working = addActivity(working, activityEvent('agent', 'error', 'AI 對話失敗', message));
+
+      if (!successfulReplies) {
+        throw new Error(failedAgents[0]?.error || 'AI 製片成員沒有完成任何回覆。');
+      }
+      const stopped = stopConversationRef.current && queue.length > 0;
+      const partialFailure = failedAgents.length
+        ? `${failedAgents.length} 位成員未完成回覆：${failedAgents.map((entry) => `${agentNames.get(entry.agentId) ?? entry.agentId}：${entry.error}`).join('；')}`
+        : undefined;
+      const partial = stopped || Boolean(partialFailure);
+      working = patchDialogue(working, currentUserMessage.id, {
+        deliveryState: partial ? 'partial' : 'sent',
+        completedAgentIds: [...completedAgentIds],
+        failure: stopped ? '已依要求停止後續成員回覆；目前結果已保留。' : partialFailure,
+      });
       commitProject(working);
       await persistNow(working);
+      setConversationProgress((current) => ({
+        ...current,
+        active: false,
+        currentAgentId: undefined,
+        currentIndex: processedCalls,
+        total: Math.max(processedCalls, current.total),
+        phase: stopped ? 'stopping' : 'completed',
+        detail: stopped
+          ? '已停止後續成員回覆；目前結果已保留。'
+          : partialFailure ?? '所有指定成員與協作要求均已完成。',
+      }));
+    } catch (error) {
+      const message = errorMessage(error);
+      working = patchDialogue(working, currentUserMessage.id, {
+        deliveryState: completedAgentIds.size ? 'partial' : 'failed',
+        completedAgentIds: [...completedAgentIds],
+        failure: message,
+      });
+      working = addActivity(working, activityEvent('agent', 'error', 'AI 對話未完成', message, {
+        agentId: queue[0]?.agentId,
+        retryable: true,
+      }));
+      commitProject(working);
+      await persistNow(working);
+      setConversationProgress((current) => ({
+        ...current,
+        active: false,
+        phase: 'failed',
+        detail: message,
+      }));
       setFatalError(message);
       throw error;
     } finally {
+      stopConversationRef.current = false;
       setWorkState('idle');
     }
   }, [commitProject, persistNow, requireAgentRuntime, selectedModelId, videoProvider]);
+
+  const retryMessage = useCallback(async (messageId: string) => {
+    const message = ensureWorkspace(projectRef.current).messages.find((entry) => entry.id === messageId && entry.kind === 'user');
+    if (!message) throw new Error('找不到可重試的訊息。');
+    const target = message.conversationTarget ?? message.agentId ?? 'screenwriter';
+    await sendMessage(target, message.text, { attempt: (message.attempt ?? 1) + 1, messageId });
+  }, [sendMessage]);
+
+  const stopConversation = useCallback(() => {
+    stopConversationRef.current = true;
+    setConversationProgress((current) => current.active ? {
+      ...current,
+      phase: 'stopping',
+      detail: '目前成員完成回覆後，將停止後續成員。',
+    } : current);
+  }, []);
 
   const applyProposal = useCallback((proposalId: string) => {
     if (render && !terminalRenderStates.has(render.state)) {
@@ -1018,7 +1541,7 @@ export default function StudioApp() {
       return setFatalError(videoProvider.error ?? videoProvider.message);
     }
     if (current.settings.visualMode === 'ai-video' && current.settings.lipSync) {
-      return setFatalError('真正影片模式目前尚未提供可驗證的本機口型同步。請先在設定中關閉。');
+      return setFatalError('AI 影片模式目前尚未提供經驗證的本機口型同步。請先在設定中關閉此功能。');
     }
     const preflightIssue = getVideoPreflightIssue(current, videoProvider);
     if (preflightIssue) return setFatalError(preflightIssue);
@@ -1100,7 +1623,7 @@ export default function StudioApp() {
     try {
       const status = await configureComfyUiProvider(endpoint, workflowName, workflow);
       setVideoProvider(status);
-      setNotice('ComfyUI 影片工作流已通過連線、必要參數綁定、節點註冊與影片輸出節點驗證。真正生成能力會在第一個鏡頭工作中確認。');
+      setNotice('ComfyUI 影片工作流已通過連線、必要參數綁定、節點註冊與影片輸出節點驗證。實際生成能力會在第一個鏡頭工作中確認。');
     } catch (error) {
       setFatalError(errorMessage(error));
       throw error;
@@ -1165,7 +1688,7 @@ export default function StudioApp() {
     if (!project.productionBible?.directorReview?.approved) return '總導演尚未核准完整製作交付。';
     if (!project.scenes.length) return '尚未建立影片鏡頭。';
     if (project.settings.visualMode === 'ai-video' && !videoProvider.available) return videoProvider.error ?? videoProvider.message;
-    if (project.settings.visualMode === 'ai-video' && project.settings.lipSync) return '真正影片模式目前不支援可驗證的本機口型同步。';
+    if (project.settings.visualMode === 'ai-video' && project.settings.lipSync) return 'AI 影片模式目前不支援經驗證的本機口型同步。';
     if (videoPreflightIssue) return videoPreflightIssue;
     return undefined;
   }, [project, videoPreflightIssue, videoProvider]);
@@ -1197,7 +1720,7 @@ export default function StudioApp() {
           >
             <Film size={13} />
             {project.settings.visualMode === 'ai-video'
-              ? `影片模型 ${videoProvider.available ? '已連線' : '未就緒'}`
+              ? `影片模型 ${videoProvider.available ? '已連線' : '尚未可用'}`
               : '動態漫畫模式'}
           </StatusPill>
           <StatusPill tone={catalog.available ? 'good' : 'danger'}><Bot size={13} /> AI 製片團隊 {catalog.available ? '已連線' : '未連線'}</StatusPill>
@@ -1247,6 +1770,9 @@ export default function StudioApp() {
             renderBlockedReason={renderBlockedReason}
             onSelectTarget={setSelectedTarget}
             onSendMessage={sendMessage}
+            onRetryMessage={retryMessage}
+            onStopConversation={stopConversation}
+            conversationProgress={conversationProgress}
             onRunTeam={() => void runTeam()}
             onStartRender={() => void startVideo()}
             onControlRender={(action) => void controlVideo(action)}
@@ -1268,6 +1794,8 @@ export default function StudioApp() {
             runtimeSetup={runtimeSetup}
             hardware={hardware}
             videoProvider={videoProvider}
+            managedComfyUi={managedComfyUi}
+            resourceBusy={resourceBusy}
             refreshing={refreshing}
             testingModel={testingModel}
             configuringVideo={workState === 'video-provider'}
@@ -1275,6 +1803,11 @@ export default function StudioApp() {
             onSelectModel={setSelectedModelId}
             onTestModel={() => void runModelTest()}
             onRepairRuntime={() => void repairRuntime()}
+            onInstallManagedComfyUi={() => void runManagedComfyAction('install')}
+            onRepairManagedComfyUi={() => void runManagedComfyAction('repair')}
+            onStartManagedComfyUi={() => void runManagedComfyAction('start')}
+            onStopManagedComfyUi={() => void runManagedComfyAction('stop')}
+            onUninstallManagedComfyUi={(preserveModels) => void uninstallComfyUi(preserveModels)}
             onConfigureVideo={configureVideo}
             onClearVideo={clearVideo}
           />
@@ -1287,10 +1820,16 @@ export default function StudioApp() {
             videoProvider={videoProvider}
             checkingUpdate={checkingUpdate}
             installingUpdate={installingUpdate}
+            storageOverview={storageOverview}
+            resourceBusy={resourceBusy}
             onSettingChange={changeSetting}
             onCheckUpdate={() => void checkUpdate()}
             onInstallUpdate={() => void installUpdate()}
             onOpenModels={() => setView('models')}
+            onRefreshStorage={() => void refreshStorage()}
+            onRemoveStorageItem={removeStoredItem}
+            onRemoveOldModelVersions={removeOldStoredModelVersions}
+            onRevealStorageItem={(itemId) => void revealStoredItem(itemId)}
             onResetProject={resetProject}
           />
         )}

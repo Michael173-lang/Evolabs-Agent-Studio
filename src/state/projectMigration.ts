@@ -338,7 +338,19 @@ function migrateEvidence(value: unknown): AgentRunEvidence | undefined {
         totalTokens: totalTokens >= 0 ? Math.trunc(totalTokens) : undefined,
       }
     : undefined;
-  return { requestId, modelId, provider, latencyMs, schemaValid: true, acknowledgement, usage };
+  const retryCount = Math.max(0, Math.min(12, Math.trunc(number(value.retryCount, 0))));
+  const retryReasons = textArray(value.retryReasons, 12, 600);
+  return {
+    requestId,
+    modelId,
+    provider,
+    latencyMs,
+    schemaValid: true,
+    acknowledgement,
+    usage,
+    retryCount: retryCount || undefined,
+    retryReasons: retryReasons.length ? retryReasons : undefined,
+  };
 }
 
 function migrateWorkspaceMessages(value: unknown): AgentMessage[] {
@@ -367,6 +379,26 @@ function migrateWorkspaceMessages(value: unknown): AgentMessage[] {
       evidence,
       proposalId: optionalText(item.proposalId, 160),
       conversationTarget,
+      deliveryState: kind === 'user'
+        ? oneOf(item.deliveryState, ['sending', 'sent', 'partial', 'failed'] as const, 'sent')
+        : undefined,
+      failure: kind === 'user' ? optionalText(item.failure, 4_000) : undefined,
+      attempt: kind === 'user' ? Math.max(1, Math.min(20, Math.trunc(number(item.attempt, 1)))) : undefined,
+      completedAgentIds: kind === 'user' && Array.isArray(item.completedAgentIds)
+        ? item.completedAgentIds.flatMap((entry) => {
+          const id = migrateAgentId(entry);
+          return id ? [id] : [];
+        })
+        : undefined,
+      coordinationRequests: kind === 'assistant' && Array.isArray(item.coordinationRequests)
+        ? item.coordinationRequests.flatMap((request) => {
+          if (!isRecord(request)) return [];
+          const toAgentId = migrateAgentId(request.toAgentId);
+          const requestText = text(request.request, '', 2_000).trim();
+          const reason = text(request.reason, '', 1_000).trim();
+          return toAgentId && requestText && reason ? [{ toAgentId, request: requestText, reason }] : [];
+        }).slice(0, 12)
+        : undefined,
     }];
   });
 }
@@ -389,6 +421,8 @@ function migrateActivities(value: unknown): SystemActivityEvent[] {
       agentId: migrateAgentId(item.agentId),
       modelId: optionalText(item.modelId, 300),
       durationMs: durationMs >= 0 && durationMs <= 24 * 60 * 60 * 1_000 ? durationMs : undefined,
+      progress: Math.max(0, Math.min(100, number(item.progress, 0))) || undefined,
+      retryable: item.retryable === true || undefined,
     }];
   });
 }

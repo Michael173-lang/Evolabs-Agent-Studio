@@ -1,4 +1,4 @@
-Evolabs Agent Studio v0.8.0-beta.1 — 開始使用
+Evolabs Agent Studio v0.8.0-beta.2 — 開始使用
 ================================================
 
 這是公開測試版本。AI 對話只顯示真實模型回覆；AI 影片模式只接受真正影片模型輸出。
@@ -27,12 +27,12 @@ Evolabs Agent Studio v0.8.0-beta.1 — 開始使用
 3. 依畫面完成 GitHub 登入、更新簽章金鑰與公開更新通道設定。
 4. 安全備份：%USERPROFILE%\.evolabs\updater
 
-後續發布
---------
-雙擊 PUBLISH_UPDATE.bat。Beta 版本必須發布為 GitHub Prerelease；Windows CI 全部通過後才可提供安裝程式。
-
-BUILD_WINDOWS.bat 只供開發者救援建置。一般安裝與更新不需要使用。
-
-快速發布此 Beta
+本機建置與發布
 ----------------
-來源包內的 PUBLISH_V080_BETA_NOW.bat 會自動建立 Pull Request、等待 Windows 品質檢查、合併、建置、簽章並下載 Prerelease 安裝程式。任何檢查失敗都會立即停止，不會發布未通過的版本。
+1. 雙擊 1_BUILD_AND_TEST.bat。
+2. 等待完整 Windows 品質檢查、Engine 建置、NSIS 安裝程式與 updater 簽章完成。
+3. 安裝並實際測試 release\v目前版本 內的 Setup.exe。
+4. 確認可用後，雙擊 2_PUBLISH_RELEASE.bat，上傳已建置的 EXE、.sig、SHA-256 與 latest.json。
+
+第一次發布前仍須執行 SETUP_AUTO_UPDATE.bat，以建立並備份本機更新簽章金鑰。
+建置與發布已分開；發布階段不會重新編譯，也不會重跑已完成的本機建置。

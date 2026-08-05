@@ -1,9 +1,10 @@
-import { AlertTriangle, Check, FileJson2, HardDrive, RefreshCw, ServerCog, Trash2, Video } from 'lucide-react';
+import { AlertTriangle, Check, Download, FileJson2, HardDrive, PackageX, Play, RefreshCw, ServerCog, Square, Trash2, Video, Wrench } from 'lucide-react';
 import { useEffect, useState, type ChangeEvent } from 'react';
 import type {
   AgentModelCatalog,
   AgentModelTestResult,
   HardwareProfile,
+  ManagedComfyUiStatus,
   RuntimeSetupSnapshot,
   VideoProviderStatus,
 } from '../types';
@@ -16,6 +17,8 @@ interface ModelsViewProps {
   runtimeSetup: RuntimeSetupSnapshot;
   hardware: HardwareProfile;
   videoProvider: VideoProviderStatus;
+  managedComfyUi: ManagedComfyUiStatus;
+  resourceBusy: string;
   refreshing: boolean;
   testingModel: boolean;
   configuringVideo: boolean;
@@ -23,6 +26,11 @@ interface ModelsViewProps {
   onSelectModel: (modelId: string) => void;
   onTestModel: () => void;
   onRepairRuntime: () => void;
+  onInstallManagedComfyUi: () => void;
+  onRepairManagedComfyUi: () => void;
+  onStartManagedComfyUi: () => void;
+  onStopManagedComfyUi: () => void;
+  onUninstallManagedComfyUi: (preserveModels: boolean) => void;
   onConfigureVideo: (endpoint: string, workflowName: string, workflow: unknown) => Promise<void>;
   onClearVideo: () => Promise<void>;
 }
@@ -44,10 +52,34 @@ function runtimeStepStateLabel(state: RuntimeSetupSnapshot['steps'][number]['sta
 
 function compatibilityLabel(status: VideoProviderStatus['compatibility']): string {
   if (status === 'recommended') return '硬體條件良好';
-  if (status === 'experimental') return '低顯存實驗路徑';
+  if (status === 'experimental') return '低顯存實驗性配置';
   if (status === 'unsupported') return '目前硬體不支援';
   return '尚未判定';
 }
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 100 || unit === 0 ? value.toFixed(0) : value.toFixed(2)} ${units[unit]}`;
+}
+
+function managedStateLabel(status: ManagedComfyUiStatus): string {
+  if (status.state === 'running') return '執行中';
+  if (status.state === 'installing') return '安裝中';
+  if (status.state === 'repairing') return '修復中';
+  if (status.state === 'starting') return '啟動中';
+  if (status.state === 'uninstalling') return '移除中';
+  if (status.state === 'failed') return '需要處理';
+  if (status.installed) return '已安裝';
+  return '尚未安裝';
+}
+
 
 export default function ModelsView({
   catalog,
@@ -56,6 +88,8 @@ export default function ModelsView({
   runtimeSetup,
   hardware,
   videoProvider,
+  managedComfyUi,
+  resourceBusy,
   refreshing,
   testingModel,
   configuringVideo,
@@ -63,6 +97,11 @@ export default function ModelsView({
   onSelectModel,
   onTestModel,
   onRepairRuntime,
+  onInstallManagedComfyUi,
+  onRepairManagedComfyUi,
+  onStartManagedComfyUi,
+  onStopManagedComfyUi,
+  onUninstallManagedComfyUi,
   onConfigureVideo,
   onClearVideo,
 }: ModelsViewProps) {
@@ -73,9 +112,9 @@ export default function ModelsView({
   const [fileError, setFileError] = useState('');
 
   useEffect(() => {
-    setEndpoint(videoProvider.endpoint ?? 'http://127.0.0.1:8188');
+    setEndpoint(videoProvider.endpoint ?? managedComfyUi.endpoint ?? 'http://127.0.0.1:8188');
     setWorkflowName(videoProvider.workflowName ?? 'Evolabs ComfyUI 影片工作流');
-  }, [videoProvider.endpoint, videoProvider.workflowName]);
+  }, [managedComfyUi.endpoint, videoProvider.endpoint, videoProvider.workflowName]);
 
   const importWorkflow = async (file: File | undefined) => {
     if (!file) return;
@@ -99,7 +138,7 @@ export default function ModelsView({
       <SectionHeader
         eyebrow="模型與執行環境"
         title="模型與本機執行環境"
-        description="Agent 模型負責理解、討論與規劃；影片模型服務負責逐鏡生成真正的時間序列。兩者分開驗證，任何一方失敗都不會在未告知的情況下改用預寫文案或靜態圖片替代。"
+        description="Agent 模型負責理解、討論與規劃；影片模型服務負責逐鏡生成時間序列。兩者分開驗證；任一服務未通過檢查時，系統會停止相關工作並顯示原因。"
         actions={(
           <button className="button button--secondary" type="button" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw size={16} /> {refreshing ? '重新整理中' : '重新整理'}
@@ -221,18 +260,100 @@ export default function ModelsView({
             {hardware.vramMb > 0 && hardware.vramMb <= 6 * 1024 && (
               <div className="inline-alert">
                 <AlertTriangle size={17} />
-                <span>4–6 GB 顯存只能視為真正影片模型的低顯存實驗路徑。Evolabs 不會改用圖片運鏡冒充成功。</span>
+                <span>4–6 GB 顯存僅適合低顯存實驗工作流。若硬體或模型無法執行，系統會停止並顯示原因。</span>
               </div>
             )}
           </section>
         </aside>
 
+        <section className="panel model-section model-section--managed">
+          <div className="panel__header">
+            <div>
+              <span className="eyebrow">受管理元件</span>
+              <h2>AI 影片引擎</h2>
+              <p>Evolabs 可以自動安裝、啟動及修復本機 ComfyUI 執行環境。一般使用不需要手動設定服務位址。</p>
+            </div>
+            <StatusPill tone={managedComfyUi.available ? 'good' : managedComfyUi.state === 'failed' ? 'danger' : managedComfyUi.installed ? 'warning' : 'neutral'}>
+              {managedStateLabel(managedComfyUi)}
+            </StatusPill>
+          </div>
+          <div className="managed-engine">
+            <div className="managed-engine__summary">
+              <div className="provider-summary__icon"><ServerCog size={22} /></div>
+              <div>
+                <strong>{managedComfyUi.message}</strong>
+                <p>{managedComfyUi.installPath ? `安裝位置：${managedComfyUi.installPath}` : '尚未建立安裝目錄。'}</p>
+                {managedComfyUi.error && <p className="error-text">{managedComfyUi.error}</p>}
+              </div>
+              <div className="managed-engine__size"><span>目前占用</span><strong>{formatBytes(managedComfyUi.installedBytes)}</strong></div>
+            </div>
+            {(managedComfyUi.state === 'installing' || managedComfyUi.state === 'repairing' || managedComfyUi.state === 'starting') && (
+              <div className="managed-engine__progress">
+                <ProgressBar value={managedComfyUi.progress} />
+                <small>{managedComfyUi.progress}%</small>
+              </div>
+            )}
+            {!!managedComfyUi.steps.length && (
+              <div className="runtime-steps managed-engine__steps">
+                {managedComfyUi.steps.map((step) => (
+                  <div key={step.id}>
+                    <StatusPill tone={step.state === 'done' ? 'good' : step.state === 'working' ? 'working' : step.state === 'failed' ? 'danger' : 'neutral'}>
+                      {step.state === 'done' ? '完成' : step.state === 'working' ? '執行中' : step.state === 'failed' ? '失敗' : '等待'}
+                    </StatusPill>
+                    <span><strong>{step.title}</strong><small>{step.detail}</small></span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="button-row button-row--end managed-engine__actions">
+              {!managedComfyUi.installed && (
+                <button className="button button--primary" type="button" disabled={Boolean(resourceBusy)} onClick={onInstallManagedComfyUi}>
+                  {resourceBusy === 'comfy-install' ? <span className="spinner" /> : <Download size={16} />} 安裝 AI 影片引擎
+                </button>
+              )}
+              {managedComfyUi.installed && !managedComfyUi.running && (
+                <button className="button button--primary" type="button" disabled={Boolean(resourceBusy)} onClick={onStartManagedComfyUi}>
+                  {resourceBusy === 'comfy-start' ? <span className="spinner" /> : <Play size={16} />} 啟動
+                </button>
+              )}
+              {managedComfyUi.running && (
+                <button className="button button--secondary" type="button" disabled={Boolean(resourceBusy)} onClick={onStopManagedComfyUi}>
+                  {resourceBusy === 'comfy-stop' ? <span className="spinner" /> : <Square size={15} />} 停止
+                </button>
+              )}
+              {managedComfyUi.installed && (
+                <button className="button button--secondary" type="button" disabled={Boolean(resourceBusy)} onClick={onRepairManagedComfyUi}>
+                  {resourceBusy === 'comfy-repair' ? <span className="spinner" /> : <Wrench size={16} />} 修復
+                </button>
+              )}
+              {managedComfyUi.installed && (
+                <details className="managed-uninstall">
+                  <summary><PackageX size={15} /> 解除安裝選項</summary>
+                  <div className="managed-uninstall__menu">
+                    <button className="button button--secondary button--compact" type="button" disabled={Boolean(resourceBusy)} onClick={() => {
+                      if (window.confirm('解除安裝 AI 影片引擎？已下載的影片模型將保留。')) onUninstallManagedComfyUi(true);
+                    }}>
+                      保留影片模型
+                    </button>
+                    <button className="button button--danger button--compact" type="button" disabled={Boolean(resourceBusy)} onClick={() => {
+                      if (window.confirm('解除安裝 AI 影片引擎並刪除其影片模型？此操作無法復原。')) onUninstallManagedComfyUi(false);
+                    }}>
+                      {resourceBusy === 'comfy-uninstall' ? <span className="spinner" /> : <Trash2 size={14} />} 連同模型移除
+                    </button>
+                  </div>
+                </details>
+              )}
+            </div>
+            <p className="form-note">影片模型檔案可在「設定 → 儲存空間」逐一解除安裝。需要自訂影片模型時，可展開下方進階設定。</p>
+          </div>
+        </section>
+
         <section className="panel model-section model-section--video">
           <div className="panel__header">
             <div>
-              <span className="eyebrow">真正影片生成</span>
+              <span className="eyebrow">AI 影片生成</span>
               <h2>影片模型服務</h2>
-              <p>可匯入不同的本機 ComfyUI API 工作流以切換真正的影片模型。Evolabs 會透過 `/object_info` 驗證節點註冊，並檢查必要參數綁定與影片輸出能力。</p>
+              <p>一般使用者只需使用上方受管理引擎。自訂影片模型工作流屬於進階功能，Evolabs 會驗證節點、必要參數與影片輸出能力。</p>
             </div>
             <StatusPill tone={videoProvider.available ? 'good' : videoProvider.configured ? 'danger' : 'warning'}>
               {videoProvider.available ? '已連線並通過驗證' : videoProvider.configured ? '驗證失敗' : '尚未完成設定'}
@@ -280,7 +401,9 @@ export default function ModelsView({
             </div>
           )}
 
-          <div className="provider-config">
+          <details className="advanced-provider">
+            <summary>進階設定：匯入自訂影片工作流</summary>
+            <div className="provider-config">
             <label className="field">
               <span>ComfyUI 本機位址</span>
               <input value={endpoint} onChange={(event: ChangeEvent<HTMLInputElement>) => setEndpoint(event.target.value)} placeholder="http://127.0.0.1:8188" />
@@ -295,7 +418,7 @@ export default function ModelsView({
               <FileJson2 size={20} />
               <span>
                 <strong>{workflowFileName || '匯入 ComfyUI API 工作流'}</strong>
-                <small>{'必須匯入 ComfyUI 的「API 格式」工作流。提示詞、負向提示、隨機種子、幀數與幀率綁定，以及影片輸出節點，全部都是必要條件。此處只驗證連線與工作流結構；真正生成能力會在第一個鏡頭工作中確認。'}</small>
+                <small>{'必須匯入 ComfyUI 的「API 格式」工作流。提示詞、負向提示、隨機種子、幀數與幀率綁定，以及影片輸出節點，全部都是必要條件。此處只驗證連線與工作流結構；實際生成能力會在第一個鏡頭工作中確認。'}</small>
               </span>
             </label>
             {fileError && <p className="form-note form-note--danger">{fileError}</p>}
@@ -325,7 +448,8 @@ export default function ModelsView({
                 {configuringVideo ? '正在驗證' : '驗證並儲存'}
               </button>
             </div>
-          </div>
+            </div>
+          </details>
         </section>
       </div>
     </div>

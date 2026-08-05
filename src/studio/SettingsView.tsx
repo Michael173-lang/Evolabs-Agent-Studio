@@ -1,6 +1,7 @@
 import type { ChangeEvent } from 'react';
 import { Bell, CheckCircle2, Download, FileText, FolderOpen, Gauge, RotateCcw, ShieldCheck } from 'lucide-react';
-import type { AppUpdateInfo, EvolabsProject, HardwareProfile, VideoProviderStatus } from '../types';
+import type { AppUpdateInfo, EvolabsProject, HardwareProfile, StorageOverview, VideoProviderStatus } from '../types';
+import StoragePanel from './StoragePanel';
 import { SectionHeader, StatusPill } from './ui';
 
 interface SettingsViewProps {
@@ -10,10 +11,16 @@ interface SettingsViewProps {
   videoProvider: VideoProviderStatus;
   checkingUpdate: boolean;
   installingUpdate: boolean;
+  storageOverview: StorageOverview | null;
+  resourceBusy: string;
   onSettingChange: <K extends keyof EvolabsProject['settings']>(key: K, value: EvolabsProject['settings'][K]) => void;
   onCheckUpdate: () => void;
   onInstallUpdate: () => void;
   onOpenModels: () => void;
+  onRefreshStorage: () => void;
+  onRemoveStorageItem: (itemId: string, confirmation: string) => Promise<void>;
+  onRemoveOldModelVersions: () => Promise<void>;
+  onRevealStorageItem: (itemId: string) => void;
   onResetProject: () => void;
 }
 
@@ -37,10 +44,16 @@ export default function SettingsView({
   videoProvider,
   checkingUpdate,
   installingUpdate,
+  storageOverview,
+  resourceBusy,
   onSettingChange,
   onCheckUpdate,
   onInstallUpdate,
   onOpenModels,
+  onRefreshStorage,
+  onRemoveStorageItem,
+  onRemoveOldModelVersions,
+  onRevealStorageItem,
   onResetProject,
 }: SettingsViewProps) {
   return (
@@ -80,7 +93,7 @@ export default function SettingsView({
                   <option value="ai-video">AI 影片</option>
                   <option value="motion-comic">動態漫畫</option>
                 </select>
-                <small>動態漫畫不會標示為影片模型生成。</small>
+                <small>動態漫畫會以獨立模式標示，不會與影片模型輸出混淆。</small>
               </label>
               <label className="field">
                 <span>影片品質</span>
@@ -110,7 +123,7 @@ export default function SettingsView({
             <Toggle checked={project.settings.captions} label="字幕" description="將對白燒錄至最終影片。" onChange={(value) => onSettingChange('captions', value)} />
             <Toggle checked={project.settings.strictCharacterSafety !== false} label="角色與內容安全限制" description="強制年齡、完整服裝、正常人體與角色一致性提示。" onChange={(value) => onSettingChange('strictCharacterSafety', value)} />
             <Toggle checked label="逐鏡人工核准" description="AI 影片每個鏡頭必須經你確認，才會進入最終成片。此安全條件不可關閉。" onChange={() => undefined} disabled />
-            <Toggle checked={project.settings.visualMode !== 'ai-video' && project.settings.lipSync === true} label="口型同步" description={project.settings.visualMode === 'ai-video' ? '真正影片模式尚未提供經驗證的本機口型同步，因此固定關閉。' : '動態漫畫模式可使用已安裝的對嘴元件。'} onChange={(value) => onSettingChange('lipSync', value)} disabled={project.settings.visualMode === 'ai-video'} />
+            <Toggle checked={project.settings.visualMode !== 'ai-video' && project.settings.lipSync === true} label="口型同步" description={project.settings.visualMode === 'ai-video' ? 'AI 影片模式尚未提供經驗證的本機口型同步，因此固定關閉。' : '動態漫畫模式可使用已安裝的口型同步元件。'} onChange={(value) => onSettingChange('lipSync', value)} disabled={project.settings.visualMode === 'ai-video'} />
           </section>
 
           <section className="panel settings-section">
@@ -132,15 +145,25 @@ export default function SettingsView({
               <div><span>系統記憶體</span><strong>{hardware.ramGb ? `${hardware.ramGb} GB` : '未偵測'}</strong></div>
               <div><span>影片模型服務</span><strong>{videoProvider.available ? videoProvider.workflowName ?? '已連線' : '尚未完成設定'}</strong></div>
             </div>
-            <p className="form-note">RTX 3050 4 GB 只適合低顯存實驗工作流。若工作流無法執行，Evolabs 會顯示錯誤，不會在未告知的情況下切換成靜態圖片。</p>
+            <p className="form-note">RTX 3050 4 GB 適合低顯存實驗工作流。若模型或硬體無法完成工作，系統會停止並顯示原因。</p>
           </section>
+
+          <StoragePanel
+            overview={storageOverview}
+            busy={resourceBusy}
+            onRefresh={onRefreshStorage}
+            onRemove={onRemoveStorageItem}
+            onRemoveOldVersions={onRemoveOldModelVersions}
+            onReveal={onRevealStorageItem}
+            onOpenModels={onOpenModels}
+          />
         </main>
 
         <aside className="settings-sidebar">
           <section className="panel update-card">
             <div className="settings-section__header"><Download size={19} /><div><span className="eyebrow">軟體更新</span><h2>更新</h2></div></div>
             <div className="version-line">
-              <div><strong>Evolabs {update.currentVersion || '0.8.0-beta.1'}</strong><small>{update.message}</small></div>
+              <div><strong>Evolabs {update.currentVersion || '0.8.0-beta.2'}</strong><small>{update.message}</small></div>
               <StatusPill tone={update.available ? 'warning' : update.configured ? 'good' : 'neutral'}>{update.available ? '有新版本' : update.configured ? '已設定' : '未設定'}</StatusPill>
             </div>
             {update.notes && <p className="update-notes">{update.notes}</p>}
