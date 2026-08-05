@@ -160,15 +160,18 @@ export function totalDuration(scenes: Scene[]): number {
 
 export function estimateRange(project: EvolabsProject, vramMb: number): [number, number] {
   const duration = Math.max(10, totalDuration(project.scenes));
-  const qualityFactor = project.settings.quality === 'speed' ? 0.65 : project.settings.quality === 'cinema' ? 2.2 : 1;
-  if (project.settings.visualMode === 'ai-images') {
-    const lowVramFactor = vramMb < 6144 ? 1.75 : vramMb < 8192 ? 1.25 : 1;
-    const imageMinutes = Math.max(1, project.scenes.length) * 1.15 * qualityFactor * lowVramFactor;
-    const lower = Math.max(3, Math.round(imageMinutes));
-    return [lower, Math.max(lower + 3, Math.round(lower * 2.1))];
+  const sceneCount = Math.max(1, project.scenes.length);
+  const qualityFactor = project.settings.quality === 'speed' ? 0.7 : project.settings.quality === 'cinema' ? 1.8 : 1;
+  if (project.settings.visualMode === 'ai-video') {
+    // True video generation is model/workflow dependent. Keep the estimate deliberately broad,
+    // especially on 4–6 GB GPUs where offload may make one short shot take tens of minutes.
+    const vramFactor = vramMb < 6_144 ? 5.5 : vramMb < 8_192 ? 3 : vramMb < 12_288 ? 1.8 : vramMb < 16_384 ? 1.25 : 1;
+    const modelMinutes = Math.max(duration * 0.65, sceneCount * 3) * qualityFactor * vramFactor;
+    const lower = Math.max(15, Math.round(modelMinutes));
+    return [lower, Math.max(lower + 15, Math.round(lower * 2.4))];
   }
-  // The storyboard-card path is CPU/FFmpeg bound, so VRAM does not inflate it.
-  const sceneOverhead = project.scenes.length * 0.12;
+  // Motion comic (including migrated legacy cards/images modes) is CPU/FFmpeg bound.
+  const sceneOverhead = sceneCount * 0.12;
   const lower = Math.max(1, Math.round(((duration / 60) * 2 + sceneOverhead) * qualityFactor));
   return [lower, Math.max(lower + 1, Math.round(lower * 1.8))];
 }

@@ -25,15 +25,28 @@ describe('fast planner', () => {
     expect(plan.characters.every((character) => character.locked === false)).toBe(true);
   });
 
-  it('keeps the functional-core estimate short and makes cinema encoding slower', () => {
+  it('keeps the motion-comic estimate short and makes cinema encoding slower', () => {
     const project = createBlankProject();
     project.story = '測試';
     project.scenes = createFastPlan(project).scenes;
-    project.settings.visualMode = 'cards';
+    project.settings.visualMode = 'motion-comic';
     const comic = estimateRange(project, 4096);
     expect(comic[0]).toBeLessThan(10);
     project.settings.quality = 'cinema';
     const cinema = estimateRange(project, 4096);
     expect(cinema[0]).toBeGreaterThan(comic[0]);
   });
+
+  it('reports a broad and materially longer estimate for true video on low VRAM hardware', () => {
+    const project = createBlankProject();
+    project.story = '測試';
+    project.scenes = createFastPlan(project).scenes;
+    project.settings.visualMode = 'motion-comic';
+    const comic = estimateRange(project, 4096);
+    project.settings.visualMode = 'ai-video';
+    const video = estimateRange(project, 4096);
+    expect(video[0]).toBeGreaterThan(comic[1]);
+    expect(video[1]).toBeGreaterThan(video[0]);
+  });
+
 });

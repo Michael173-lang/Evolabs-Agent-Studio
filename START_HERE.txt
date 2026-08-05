@@ -1,35 +1,38 @@
-Evolabs Agent Studio v0.7.0 — 從這裡開始
+Evolabs Agent Studio v0.8.0-beta.1 — 開始使用
 ================================================
 
-這一版已經改成「你只貼劇本，剩下交給智慧體」。
-請不要再執行舊的 BUILD_NOW、COMPILE_EVOLABS_DIRECT 或手動覆蓋腳本流程。
+這是公開測試版本。AI 對話只顯示真實模型回覆；AI 影片模式只接受真正影片模型輸出。
+舊版靜態圖片加運鏡流程已獨立為「動態漫畫」，不會再標示為 AI 影片。
 
-第一次（只做一次）
-------------------
-1. 把整個 ZIP 完整解壓縮。
-2. 雙擊 SETUP_AUTO_UPDATE.bat。
-3. 瀏覽器開啟後登入 GitHub。
-4. repository 提示直接按 Enter，使用預設名稱即可。
-5. 等待 GitHub 在雲端測試、建置與簽署 Windows 安裝器。
-6. 安裝器下載完成後，輸入 Y 或直接按 Enter 啟動安裝。
-7. 安裝完成後開啟 Evolabs：貼上完整劇本 → 按「交給 Evolabs 團隊」。
+一般使用者
+----------
+1. 安裝 GitHub Prerelease 提供的 Windows Setup.exe。
+2. 開啟「模型」頁面，完成 Agent 模型連線測試。
+3. 使用 AI 影片模式時，匯入可用的本機 ComfyUI API 影片工作流並通過驗證。
+4. 回到「開始製作」，貼上劇本並先交給 AI 編劇。
+5. 檢查模型的真實回覆與任務確認，再建立完整製作計畫。
+6. 每個影片鏡頭完成後，逐項檢查人物、服裝、年齡、動作與連戲；只有核准鏡頭才能進入成片。
 
-以後更新已安裝的 Evolabs
-------------------------
-Evolabs 啟動時會自動檢查。看到新版時按：
-設定 → 自動更新 → 更新並重啟
-
-以後發佈你修改的新版本
-----------------------
-雙擊 PUBLISH_UPDATE.bat。
-版本與摘要都可以直接按 Enter；GitHub 會在雲端產生新 EXE。
-你不需要再安裝 Rust、重跑本機 NSIS 或手動替換 EXE。
-
-重要備份
+重要限制
 --------
-請安全備份：
-%USERPROFILE%\.evolabs\updater
+- Runtime 或模型未連線時，Evolabs 會停止工作，不會偽造 Agent 回覆。
+- 只輸出圖片的 ComfyUI 工作流不能用於 AI 影片模式。
+- RTX 3050 Laptop 4 GB 對真正影片模型僅屬實驗性相容。
+- 本 Beta 尚未宣稱能自動辨識所有人體畸形或裸露問題，因此逐鏡人工核准不可略過。
 
-其中的 evolabs-updater.key 是更新私鑰。不要傳到 Discord、不要放進 GitHub、不要刪除唯一備份。
+發佈者第一次設定
+----------------
+1. 完整解壓縮來源包。
+2. 雙擊 SETUP_AUTO_UPDATE.bat。
+3. 依畫面完成 GitHub 登入、更新簽章金鑰與公開更新通道設定。
+4. 安全備份：%USERPROFILE%\.evolabs\updater
 
-BUILD_WINDOWS.bat 只是開發者救援建置器，正常安裝與更新不需要使用它。
+後續發布
+--------
+雙擊 PUBLISH_UPDATE.bat。Beta 版本必須發布為 GitHub Prerelease；Windows CI 全部通過後才可提供安裝程式。
+
+BUILD_WINDOWS.bat 只供開發者救援建置。一般安裝與更新不需要使用。
+
+快速發布此 Beta
+----------------
+來源包內的 PUBLISH_V080_BETA_NOW.bat 會自動建立 Pull Request、等待 Windows 品質檢查、合併、建置、簽章並下載 Prerelease 安裝程式。任何檢查失敗都會立即停止，不會發布未通過的版本。

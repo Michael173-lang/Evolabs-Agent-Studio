@@ -97,7 +97,7 @@ class RendererIntegrationTests(unittest.TestCase):
             preview = Path(status["scenes"][0]["previewPath"])
             self.assertTrue(preview.is_file())
             self.assertEqual(preview.parent, root / "jobs" / job_id / "previews")
-            self.assertEqual(status["scenes"][0]["visualSource"], "card")
+            self.assertEqual(status["scenes"][0]["visualSource"], "motion-comic")
             self.assertEqual(status["scenes"][0]["voiceProfile"], "中性・自然")
             self.assertEqual(persisted["scenes"][0]["previewPath"], str(preview))
 
@@ -164,7 +164,7 @@ class RendererIntegrationTests(unittest.TestCase):
             self.assertEqual(status["state"], "failed")
             self.assertEqual(status["error"]["code"], "TEST_VISUAL_FAILED")
             self.assertTrue(Path(status["scenes"][0]["previewPath"]).is_file())
-            self.assertEqual(status["scenes"][0]["visualSource"], "card")
+            self.assertEqual(status["scenes"][0]["visualSource"], "motion-comic")
             self.assertIsNone(status["scenes"][1]["previewPath"])
             self.assertFalse(job.work_directory.exists())
 
@@ -222,7 +222,7 @@ class RendererIntegrationTests(unittest.TestCase):
             self.assertEqual(status["scenes"][0]["sceneNumber"], 3)
             self.assertEqual(render_card.call_args.args[2], 3)
 
-    def test_ready_lipsync_provider_is_used_for_single_speaker_ai_scene(self) -> None:
+    def test_ready_lipsync_provider_is_used_for_single_speaker_motion_comic_scene(self) -> None:
         class FakeImageProvider:
             provider_id = "fake-image"
 

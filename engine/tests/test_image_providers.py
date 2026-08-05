@@ -405,52 +405,25 @@ class _UnavailableImageProvider(_FakeImageProvider):
         return ProviderCapability(self.provider_id, self.display_name, "missing", "model missing")
 
 
-@unittest.skipUnless(shutil.which("ffmpeg"), "system ffmpeg is required for the AI render integration test")
-class AiRendererIntegrationTests(unittest.TestCase):
-    def test_ai_visual_mode_reaches_real_provider_and_mp4(self) -> None:
+@unittest.skipUnless(shutil.which("ffmpeg"), "system ffmpeg is required for the archived-mode integration test")
+class ArchivedImageModeMigrationTests(unittest.TestCase):
+    def test_archived_ai_images_mode_is_explicitly_migrated_to_motion_comic(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
+            provider = _FakeImageProvider()
             status = RenderJob(
                 Path(directory),
                 "job_00000000-0000-4000-8000-000000000301",
                 json.loads(json.dumps(PROJECT)),
-                image_provider=_FakeImageProvider(),
+                image_provider=provider,
             ).run()
             self.assertEqual(status["state"], "completed")
-            self.assertEqual(status["visualMode"], "ai-images")
-            self.assertEqual(status["scenes"][0]["visualSource"], "ai")
-            preview = Path(status["scenes"][0]["previewPath"])
-            self.assertTrue(preview.is_file())
-            self.assertEqual(preview.parent.name, "previews")
+            self.assertEqual(status["visualMode"], "motion-comic")
+            self.assertEqual(status["scenes"][0]["visualSource"], "motion-comic")
+            self.assertEqual(provider.generate_calls, 0)
             self.assertTrue(Path(status["outputPath"]).is_file())
-            self.assertIn("本機 AI 實際生成", status["message"])
+            self.assertIn("不是 AI 影片模型生成", status["message"])
 
-    def test_second_job_reuses_provenance_complete_ai_cache(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            provider = _FakeImageProvider()
-            first = RenderJob(
-                root,
-                "job_00000000-0000-4000-8000-000000000303",
-                json.loads(json.dumps(PROJECT)),
-                image_provider=provider,
-            ).run()
-            second = RenderJob(
-                root,
-                "job_00000000-0000-4000-8000-000000000304",
-                json.loads(json.dumps(PROJECT)),
-                image_provider=provider,
-            ).run()
-            self.assertEqual(first["state"], "completed")
-            self.assertEqual(second["state"], "completed")
-            # The first run generates one reusable character identity asset and one scene frame.
-            # The second run must reuse both provenance-complete cache entries.
-            self.assertEqual(provider.generate_calls, 2)
-            self.assertTrue(first["characterAssets"][0]["generated"])
-            self.assertTrue(second["characterAssets"][0]["cacheHit"])
-            self.assertFalse(first["scenes"][0]["cacheHit"])
-            self.assertTrue(second["scenes"][0]["cacheHit"])
-
-    def test_explicit_ai_mode_never_silently_falls_back_to_cards(self) -> None:
+    def test_archived_image_provider_state_cannot_change_motion_comic_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             status = RenderJob(
                 Path(directory),
@@ -458,9 +431,24 @@ class AiRendererIntegrationTests(unittest.TestCase):
                 json.loads(json.dumps(PROJECT)),
                 image_provider=_UnavailableImageProvider(),
             ).run()
-            self.assertEqual(status["state"], "failed")
-            self.assertEqual(status["error"]["code"], "AI_IMAGE_UNAVAILABLE")
-            self.assertIsNone(status["outputPath"])
+            self.assertEqual(status["state"], "completed")
+            self.assertEqual(status["visualMode"], "motion-comic")
+            self.assertEqual(status["scenes"][0]["visualSource"], "motion-comic")
+            self.assertIsNotNone(status["outputPath"])
+
+    def test_archived_image_provider_is_never_called_across_jobs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            provider = _FakeImageProvider()
+            for suffix in (303, 304):
+                status = RenderJob(
+                    root,
+                    f"job_00000000-0000-4000-8000-000000000{suffix}",
+                    json.loads(json.dumps(PROJECT)),
+                    image_provider=provider,
+                ).run()
+                self.assertEqual(status["state"], "completed")
+            self.assertEqual(provider.generate_calls, 0)
 
 
 class AiCacheKeyTests(unittest.TestCase):

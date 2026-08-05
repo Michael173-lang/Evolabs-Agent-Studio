@@ -1,11 +1,12 @@
 export type ProjectMode = 'anime' | 'realistic';
 export type QualityPreset = 'speed' | 'balanced' | 'cinema';
-export type VisualMode = 'cards' | 'ai-images';
-export type SceneStatus = 'draft' | 'ready' | 'queued' | 'working' | 'done' | 'failed';
-export type RenderStage = 'idle' | 'visual' | 'motion' | 'voice' | 'compose' | 'complete';
-export type RenderJobState = 'queued' | 'running' | 'pausing' | 'paused' | 'canceling' | 'canceled' | 'failed' | 'completed';
+/** `cards` and `ai-images` are retained only so v0.7 projects can be migrated safely. */
+export type VisualMode = 'ai-video' | 'motion-comic' | 'cards' | 'ai-images';
+export type SceneStatus = 'draft' | 'ready' | 'queued' | 'working' | 'review' | 'done' | 'failed';
+export type RenderStage = 'idle' | 'visual' | 'motion' | 'voice' | 'review' | 'compose' | 'complete';
+export type RenderJobState = 'queued' | 'running' | 'awaiting-review' | 'pausing' | 'paused' | 'canceling' | 'canceled' | 'failed' | 'completed';
 export type RenderControlAction = 'pause' | 'resume' | 'cancel';
-export type RenderSceneState = 'queued' | 'working' | 'done' | 'failed';
+export type RenderSceneState = 'queued' | 'working' | 'review' | 'done' | 'failed';
 export type VoiceProfile = '青年・自然' | '少女・清冷' | '中性・自然' | '成熟・沉穩';
 
 export type AgentId =
@@ -17,6 +18,7 @@ export type AgentId =
   | 'scene-designer'
   | 'storyboard-artist'
   | 'sound-director';
+export type ConversationTarget = AgentId | 'production-meeting';
 export type AgentStage = Exclude<AgentId, 'director'> | 'director-review';
 export type AgentRunState = 'idle' | 'planning' | 'preparing-models' | 'rendering' | 'paused' | 'completed' | 'failed';
 export type AgentTaskState = 'queued' | 'working' | 'done' | 'blocked' | 'failed';
@@ -54,6 +56,64 @@ export interface AgentTask {
   state: AgentTaskState;
   progress: number;
   nodeId?: string;
+  requestId?: string;
+  modelId?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  failure?: string;
+}
+
+export interface AgentTokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+export interface AgentTaskAcknowledgement {
+  understoodTask: boolean;
+  objective: string;
+  inputsReceived: string[];
+  constraints: string[];
+  missingInformation: string[];
+}
+
+export interface AgentRunEvidence {
+  requestId: string;
+  modelId: string;
+  provider: string;
+  latencyMs: number;
+  usage?: AgentTokenUsage;
+  schemaValid: boolean;
+  acknowledgement?: AgentTaskAcknowledgement;
+}
+
+export type AgentChangeOperation =
+  | {
+      type: 'append-director-instruction';
+      value: string;
+    }
+  | {
+      type: 'set-character-field';
+      characterName: string;
+      field: 'age' | 'role' | 'appearance' | 'wardrobe' | 'identityAnchor' | 'appearancePrompt' | 'negativePrompt' | 'expressionGuide' | 'voiceDirection';
+      value: string;
+    }
+  | {
+      type: 'set-scene-field';
+      sceneId?: string;
+      sceneTitle?: string;
+      field: 'title' | 'visual' | 'dialogue' | 'shot' | 'composition' | 'action' | 'emotion' | 'startFramePrompt' | 'endFramePrompt' | 'motionPrompt' | 'negativePrompt' | 'transition' | 'continuityIn' | 'continuityOut';
+      value: string;
+    };
+
+export interface AgentChangeProposal {
+  id: string;
+  agentId: AgentId;
+  title: string;
+  summary: string;
+  operations: AgentChangeOperation[];
+  status: 'pending' | 'applied' | 'rejected';
+  createdAt: string;
 }
 
 export interface AgentMessage {
@@ -62,7 +122,25 @@ export interface AgentMessage {
   sender: string;
   text: string;
   createdAt: string;
-  kind: 'agent' | 'user' | 'system';
+  /** `agent` and `system` are legacy values; v0.8 dialogue only writes user/assistant. */
+  kind: 'assistant' | 'user' | 'agent' | 'system';
+  evidence?: AgentRunEvidence;
+  proposalId?: string;
+  /** Identifies the direct Agent chat or production meeting this message belongs to. */
+  conversationTarget?: ConversationTarget;
+}
+
+export interface SystemActivityEvent {
+  id: string;
+  category: 'runtime' | 'agent' | 'video' | 'validation' | 'storage';
+  level: 'info' | 'working' | 'success' | 'warning' | 'error';
+  title: string;
+  detail?: string;
+  createdAt: string;
+  requestId?: string;
+  agentId?: AgentId;
+  modelId?: string;
+  durationMs?: number;
 }
 
 export interface AgentCanvasNode {
@@ -104,7 +182,7 @@ export interface ScriptAnalysisArtifact {
   targetAudience: string;
   summary: string;
   beats: StoryBeat[];
-  characterSeeds: Array<{ name: string; role: string; goal: string; conflict: string; traits: string[] }>;
+  characterSeeds: Array<{ name: string; role: string; goal: string; conflict: string; traits: string[]; age?: string; wardrobe?: string }>;
   locationSeeds: Array<{ name: string; purpose: string; timeHint?: string }>;
 }
 
@@ -163,6 +241,7 @@ export interface DirectorIssue {
   sceneId?: string;
   message: string;
   fix: string;
+  returnToAgent?: AgentId;
 }
 
 export interface DirectorReviewArtifact {
@@ -187,6 +266,7 @@ export interface AgentWorkspace {
   state: AgentRunState;
   autopilot: boolean;
   activeAgentId?: AgentId;
+  activeConversation?: ConversationTarget;
   startedAt?: string;
   finishedAt?: string;
   provider?: string;
@@ -195,19 +275,21 @@ export interface AgentWorkspace {
   zoom: number;
   agents: AgentMember[];
   tasks: AgentTask[];
+  /** Dialogue contains only user input and real model replies in v0.8. */
   messages: AgentMessage[];
+  activities?: SystemActivityEvent[];
+  proposals?: AgentChangeProposal[];
   nodes: AgentCanvasNode[];
   artifacts?: ProductionBible;
 }
 
 export interface AgentRuntimeProfile {
   available: boolean;
-  provider: 'lm-studio' | 'fallback';
+  provider: 'lm-studio' | 'unavailable';
   endpoint?: string;
   model?: string;
   message: string;
 }
-
 
 export type RuntimeSetupState = 'idle' | 'running' | 'completed' | 'failed';
 export type RuntimeSetupStepState = 'queued' | 'working' | 'done' | 'failed';
@@ -245,11 +327,11 @@ export interface Character {
   id: string;
   name: string;
   role: string;
+  age?: string;
   appearance: string;
   voice: VoiceProfile;
   locked: boolean;
   accent: string;
-  /** Persisted local reference. A path is preferred in the desktop app; data URLs keep browser previews portable. */
   referenceImagePath?: string;
   referenceImageDataUrl?: string;
   referenceImageName?: string;
@@ -260,6 +342,13 @@ export interface Character {
   wardrobe?: string;
   expressionGuide?: string;
   voiceDirection?: string;
+}
+
+export interface ShotQualityCheck {
+  id: 'decode' | 'duration' | 'black-frame' | 'frozen-frame' | 'human-review' | 'semantic-safety';
+  label: string;
+  state: 'passed' | 'warning' | 'failed' | 'pending' | 'unavailable';
+  detail: string;
 }
 
 export interface Scene {
@@ -274,9 +363,8 @@ export interface Scene {
   status: SceneStatus;
   progress: number;
   seed?: number;
-  /** Last real render artifact for this exact scene; never a CSS/mock preview. */
   previewPath?: string;
-  visualSource?: 'ai' | 'reference' | 'card';
+  visualSource?: 'motion-comic' | 'reference' | 'video';
   locationId?: string;
   storyBeatId?: string;
   composition?: string;
@@ -285,6 +373,7 @@ export interface Scene {
   startFramePrompt?: string;
   endFramePrompt?: string;
   motionPrompt?: string;
+  videoPrompt?: string;
   negativePrompt?: string;
   transition?: string;
   continuityIn?: string;
@@ -292,6 +381,10 @@ export interface Scene {
   musicCue?: string;
   ambience?: string;
   soundEffects?: string[];
+  generationAttempt?: number;
+  reviewState?: 'pending' | 'approved' | 'rejected';
+  reviewFeedback?: string;
+  qualityChecks?: ShotQualityCheck[];
 }
 
 export interface ProjectSettings {
@@ -302,15 +395,20 @@ export interface ProjectSettings {
   renderMode: 'comic' | 'film';
   visualMode?: VisualMode;
   imageProvider?: 'auto' | 'sd-cli' | 'automatic1111';
+  videoProviderId?: string;
   captions: boolean;
-  /** Optional single-subject local MuseTalk pass. It is enabled only after a real provider probe succeeds. */
   lipSync?: boolean;
   autopilot?: boolean;
   keepCharacterIdentity?: boolean;
+  manualShotApproval?: boolean;
+  maxShotRetries?: number;
+  strictCharacterSafety?: boolean;
+  autoSave?: boolean;
+  reducedMotion?: boolean;
 }
 
 export interface EvolabsProject {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   title: string;
   story: string;
@@ -351,6 +449,8 @@ export interface RuntimeCapabilities {
   zhVoice: boolean;
   lipSync: boolean;
   imageToVideo: boolean;
+  trueVideoGeneration?: boolean;
+  videoProviderConfigured?: boolean;
 }
 
 export type ModelPackState = 'ready' | 'missing' | 'invalid' | 'unavailable';
@@ -394,8 +494,14 @@ export interface RenderSceneSnapshot {
   state: RenderSceneState;
   progress: number;
   previewPath?: string;
-  visualSource?: 'ai' | 'reference' | 'card';
+  visualSource?: 'motion-comic' | 'reference' | 'video';
   voiceProfile?: VoiceProfile;
+  generationAttempt?: number;
+  reviewState?: 'pending' | 'approved' | 'rejected';
+  reviewFeedback?: string;
+  qualityChecks?: ShotQualityCheck[];
+  providerId?: string;
+  modelName?: string;
 }
 
 export interface RenderJobError {
@@ -420,6 +526,79 @@ export interface RenderJobSnapshot {
   outputBytes?: number;
   message?: string;
   error?: RenderJobError;
+}
+
+export interface VideoProviderCapabilities {
+  textToVideo: boolean;
+  imageToVideo: boolean;
+  outputVideo: boolean;
+  promptBinding: boolean;
+  negativePromptBinding: boolean;
+  seedBinding: boolean;
+  dimensionsBinding: boolean;
+  frameBinding: boolean;
+  fpsBinding: boolean;
+  inputImageBinding: boolean;
+  outputPrefixBinding: boolean;
+}
+
+export interface VideoProviderStatus {
+  configured: boolean;
+  available: boolean;
+  providerId?: string;
+  kind?: 'comfyui';
+  name?: string;
+  endpoint?: string;
+  workflowName?: string;
+  workflowValid: boolean;
+  nodeCount: number;
+  capabilities: VideoProviderCapabilities;
+  detectedModels: string[];
+  compatibility: 'unsupported' | 'experimental' | 'recommended' | 'unknown';
+  message: string;
+  lastVerifiedAt?: string;
+  error?: string;
+}
+
+export interface AgentModelDescriptor {
+  id: string;
+  name: string;
+  loaded: boolean;
+  recommended: boolean;
+  family?: string;
+  contextLength?: number;
+}
+
+export interface AgentModelCatalog {
+  available: boolean;
+  provider: 'lm-studio' | 'unavailable';
+  endpoint?: string;
+  selectedModel?: string;
+  models: AgentModelDescriptor[];
+  message: string;
+}
+
+export interface AgentModelTestResult {
+  ok: boolean;
+  modelId: string;
+  latencyMs: number;
+  requestId: string;
+  usage?: AgentTokenUsage;
+  message: string;
+}
+
+export interface AgentConversationResponse {
+  assistantReply: string;
+  acknowledgement: AgentTaskAcknowledgement;
+  proposal?: Omit<AgentChangeProposal, 'id' | 'agentId' | 'status' | 'createdAt'>;
+  evidence: AgentRunEvidence;
+}
+
+export interface AgentStageResponse<T = unknown> {
+  assistantReply: string;
+  acknowledgement: AgentTaskAcknowledgement;
+  artifact: T;
+  evidence: AgentRunEvidence;
 }
 
 export interface StoryPlan {

@@ -4,7 +4,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0" 2>nul
 if errorlevel 1 goto bad_folder
 
-title Evolabs v0.7.0 Windows Source Builder
+title Evolabs v0.8.0-beta.1 Windows Source Builder
 set "EVOLABS_ROOT=%CD%"
 set "EVOLABS_SCRIPT=%EVOLABS_ROOT%\scripts\build-windows.ps1"
 set "EVOLABS_LOGDIR=%EVOLABS_ROOT%\.build\launcher-logs"
@@ -41,7 +41,7 @@ goto finish_ok
 
 :banner
 echo =====================================================
-echo Evolabs v0.7.0 Windows Source Builder
+echo Evolabs v0.8.0-beta.1 Windows Source Builder
 echo =====================================================
 echo Evolabs Windows 來源碼建置器
 echo 這不是一般使用者安裝程式。

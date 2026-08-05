@@ -35,17 +35,17 @@ function inTauri(): boolean {
 }
 
 const browserProfile: HardwareProfile = {
-  gpu: 'NVIDIA GeForce RTX 3050 Laptop GPU',
-  vramMb: 4096,
-  ramGb: 12,
-  cpu: 'Intel Core i5',
-  profile: 'rtx3050-4gb',
-  runtimeReady: true,
-  runtimeVersion: '0.7.0-demo',
+  gpu: '瀏覽器預覽未偵測硬體',
+  vramMb: 0,
+  ramGb: 0,
+  cpu: '瀏覽器預覽',
+  profile: 'low-vram',
+  runtimeReady: false,
+  runtimeVersion: '0.8.0-beta.1-preview',
   aiReady: false,
-  aiProvider: '瀏覽器 Demo',
+  aiProvider: undefined,
   capabilities: {
-    comicCore: true,
+    comicCore: false,
     animeImage: false,
     realisticImage: false,
     characterConsistency: false,
@@ -55,26 +55,14 @@ const browserProfile: HardwareProfile = {
     zhVoice: false,
     lipSync: false,
     imageToVideo: false,
+    trueVideoGeneration: false,
+    videoProviderConfigured: false,
   },
-  modelPacks: [
-    { id: 'functional-core', name: '快速分鏡核心', status: 'ready', version: '0.7.0-demo' },
-    { id: 'anime-core', name: '動漫 AI 畫面', status: 'missing', message: '瀏覽器 Demo 不會載入本機模型。' },
-    { id: 'realistic-core', name: '寫實 AI 畫面', status: 'missing', message: '瀏覽器 Demo 不會載入本機模型。' },
-  ],
+  modelPacks: [],
 };
 
-interface DemoJob {
-  snapshot: RenderJobSnapshot;
-  lastAdvancedAt: number;
-}
-
-const demoJobs = new Map<string, DemoJob>();
-const demoStages: Exclude<RenderStage, 'idle' | 'complete'>[] = ['visual', 'motion', 'voice', 'compose'];
-const demoTickMs = 700;
-const demoProgressPerTick = 6;
-
-const renderJobStates = new Set<RenderJobSnapshot['state']>(['queued', 'running', 'pausing', 'paused', 'canceling', 'canceled', 'failed', 'completed']);
-const renderStages = new Set<RenderStage>(['idle', 'visual', 'motion', 'voice', 'compose', 'complete']);
+const renderJobStates = new Set<RenderJobSnapshot['state']>(['queued', 'running', 'awaiting-review', 'pausing', 'paused', 'canceling', 'canceled', 'failed', 'completed']);
+const renderStages = new Set<RenderStage>(['idle', 'visual', 'motion', 'voice', 'review', 'compose', 'complete']);
 const hardwareProfiles = new Set<HardwareProfile['profile']>(['rtx3050-4gb', 'low-vram', 'balanced', 'high-vram']);
 const modelPackStates = new Set<ModelPackStatus['status']>(['ready', 'missing', 'invalid', 'unavailable']);
 const modelInstallStates = new Set<ModelInstallSnapshot['state']>(['queued', 'running', 'completed', 'failed', 'canceled']);
@@ -107,6 +95,8 @@ export function normalizeHardwareProfile(value: unknown): HardwareProfile {
     zhVoice: rawCapabilities?.zhVoice === true,
     lipSync: rawCapabilities?.lipSync === true,
     imageToVideo: rawCapabilities?.imageToVideo === true,
+    trueVideoGeneration: rawCapabilities?.trueVideoGeneration === true,
+    videoProviderConfigured: rawCapabilities?.videoProviderConfigured === true,
   };
   const modelPacks = Array.isArray(value.modelPacks)
     ? value.modelPacks.flatMap((entry): ModelPackStatus[] => {
@@ -205,10 +195,15 @@ export function normalizeRenderJobSnapshot(value: unknown): RenderJobSnapshot {
     if (!sceneId) return [];
     const rawSceneState = typeof rawScene.state === 'string' ? rawScene.state.toLowerCase() : 'queued';
     const sceneState = rawSceneState === 'running' ? 'working' : rawSceneState === 'completed' ? 'done' : rawSceneState;
-    const normalizedState = ['queued', 'working', 'done', 'failed'].includes(sceneState) ? sceneState as 'queued' | 'working' | 'done' | 'failed' : 'queued';
-    const visualSource: RenderSceneSnapshot['visualSource'] = rawScene.visualSource === 'ai' || rawScene.visualSource === 'reference' || rawScene.visualSource === 'card'
-      ? rawScene.visualSource
-      : undefined;
+    const normalizedState = ['queued', 'working', 'review', 'done', 'failed'].includes(sceneState) ? sceneState as RenderSceneSnapshot['state'] : 'queued';
+    const rawVisualSource = String(rawScene.visualSource ?? '');
+    const visualSource: RenderSceneSnapshot['visualSource'] = rawVisualSource === 'video'
+      ? 'video'
+      : rawVisualSource === 'reference'
+        ? 'reference'
+        : ['ai', 'card', 'motion-comic'].includes(rawVisualSource)
+          ? 'motion-comic'
+          : undefined;
     const voiceProfile = voiceProfiles.has(rawScene.voiceProfile as VoiceProfile)
       ? rawScene.voiceProfile as VoiceProfile
       : undefined;
@@ -219,13 +214,29 @@ export function normalizeRenderJobSnapshot(value: unknown): RenderJobSnapshot {
       previewPath: typeof rawScene.previewPath === 'string' && rawScene.previewPath ? rawScene.previewPath : undefined,
       visualSource,
       voiceProfile,
+      generationAttempt: typeof rawScene.generationAttempt === 'number' ? Math.max(0, Math.trunc(rawScene.generationAttempt)) : undefined,
+      reviewState: ['pending', 'approved', 'rejected'].includes(String(rawScene.reviewState))
+        ? rawScene.reviewState as RenderSceneSnapshot['reviewState']
+        : undefined,
+      reviewFeedback: typeof rawScene.reviewFeedback === 'string' ? rawScene.reviewFeedback : undefined,
+      qualityChecks: Array.isArray(rawScene.qualityChecks)
+        ? rawScene.qualityChecks.flatMap((check) => {
+            if (!isRecord(check) || typeof check.id !== 'string' || typeof check.label !== 'string' || typeof check.detail !== 'string') return [];
+            const state = ['passed', 'warning', 'failed', 'pending', 'unavailable'].includes(String(check.state))
+              ? check.state as 'passed' | 'warning' | 'failed' | 'pending' | 'unavailable'
+              : 'unavailable';
+            return [{ id: check.id as any, label: check.label, state, detail: check.detail }];
+          })
+        : undefined,
+      providerId: typeof rawScene.providerId === 'string' ? rawScene.providerId : undefined,
+      modelName: typeof rawScene.modelName === 'string' ? rawScene.modelName : undefined,
     }];
   });
   const sceneIndex = Math.max(0, Math.trunc(finiteNumber(value.sceneIndex, 0)));
   const activeScene = scenes.find((scene) => scene.state === 'working') ?? scenes[sceneIndex];
   const activeSceneId = typeof value.activeSceneId === 'string' && value.activeSceneId
     ? value.activeSceneId
-    : state === 'running' || state === 'pausing' || state === 'paused'
+    : state === 'running' || state === 'awaiting-review' || state === 'pausing' || state === 'paused'
       ? activeScene?.sceneId
       : undefined;
   const rawError = value.error;
@@ -258,55 +269,6 @@ export function normalizeRenderJobSnapshot(value: unknown): RenderJobSnapshot {
   };
 }
 
-function cloneSnapshot(snapshot: RenderJobSnapshot): RenderJobSnapshot {
-  return {
-    ...snapshot,
-    scenes: snapshot.scenes.map((scene) => ({ ...scene })),
-    error: snapshot.error ? { ...snapshot.error } : undefined,
-  };
-}
-
-function advanceDemoJob(job: DemoJob): void {
-  const snapshot = job.snapshot;
-  if (snapshot.state === 'queued') {
-    snapshot.state = 'running';
-    snapshot.message = '瀏覽器 Demo 正在模擬本機引擎';
-  }
-  if (snapshot.state !== 'running') return;
-
-  const now = Date.now();
-  const ticks = Math.max(1, Math.floor((now - job.lastAdvancedAt) / demoTickMs));
-  job.lastAdvancedAt = now;
-  snapshot.elapsedSeconds += Math.max(1, Math.round((ticks * demoTickMs) / 1000));
-  snapshot.overallProgress = Math.min(100, snapshot.overallProgress + ticks * demoProgressPerTick);
-
-  if (snapshot.overallProgress >= 100) {
-    snapshot.state = 'completed';
-    snapshot.stage = 'complete';
-    snapshot.sceneProgress = 100;
-    snapshot.activeSceneId = undefined;
-    snapshot.scenes = snapshot.scenes.map((scene) => ({ ...scene, state: 'done', progress: 100 }));
-    snapshot.outputPath = '瀏覽器 Demo（未產生實體 MP4）';
-    snapshot.outputBytes = 0;
-    snapshot.message = '示範流程已完成；Windows App 才會產生實體 MP4。';
-    return;
-  }
-
-  const sceneCount = Math.max(1, snapshot.scenes.length);
-  const exactScene = (snapshot.overallProgress / 100) * sceneCount;
-  const activeIndex = Math.min(sceneCount - 1, Math.floor(exactScene));
-  const sceneProgress = (exactScene - activeIndex) * 100;
-  const stageIndex = Math.min(demoStages.length - 1, Math.floor(sceneProgress / (100 / demoStages.length)));
-  snapshot.stage = demoStages[stageIndex];
-  snapshot.sceneProgress = sceneProgress;
-  snapshot.activeSceneId = snapshot.scenes[activeIndex]?.sceneId;
-  snapshot.scenes = snapshot.scenes.map((scene, index) => {
-    if (index < activeIndex) return { ...scene, state: 'done', progress: 100 };
-    if (index === activeIndex) return { ...scene, state: 'working', progress: sceneProgress };
-    return { ...scene, state: 'queued', progress: 0 };
-  });
-}
-
 export function isDemoBridge(): boolean {
   return !inTauri();
 }
@@ -318,7 +280,7 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
 
 export async function startModelInstall(packId: string, acceptedLicenseIds: string[] = []): Promise<{ installId: string }> {
   if (!packId.trim()) throw new Error('缺少模型包識別碼。');
-  if (!inTauri()) throw new Error('瀏覽器 Demo 無法安裝本機模型。');
+  if (!inTauri()) throw new Error('瀏覽器預覽無法安裝本機模型。');
   return invoke('start_model_install', { packId, acceptedLicenseIds });
 }
 
@@ -349,7 +311,7 @@ export function normalizeModelInstallSnapshot(value: unknown): ModelInstallSnaps
 
 export async function getModelInstall(installId: string): Promise<ModelInstallSnapshot> {
   if (!installId.trim()) throw new Error('缺少模型安裝工作識別碼。');
-  if (!inTauri()) throw new Error('瀏覽器 Demo 沒有模型安裝工作。');
+  if (!inTauri()) throw new Error('瀏覽器預覽沒有模型安裝工作。');
   return normalizeModelInstallSnapshot(await invoke<unknown>('get_model_install', { installId }));
 }
 
@@ -381,7 +343,7 @@ export async function importReferenceAsset(dataUrl: string, fileName: string): P
 
 export async function readLocalImage(path: string): Promise<string> {
   if (!path.trim()) throw new Error('缺少本機圖片路徑。');
-  if (!inTauri()) throw new Error('瀏覽器 Demo 無法讀取 Windows 本機圖片。');
+  if (!inTauri()) throw new Error('瀏覽器預覽無法讀取 Windows 本機圖片。');
   const existing = localImageCache.get(path);
   if (existing) return existing;
   const pending = invoke<string>('read_local_image', { path }).then((source) => {
@@ -461,19 +423,19 @@ export async function saveProject(project: EvolabsProject): Promise<{ ok: boolea
 export async function startAiRuntimeSetup(force = false): Promise<RuntimeSetupSnapshot> {
   if (inTauri()) return invoke<RuntimeSetupSnapshot>('start_ai_runtime_setup', { force });
   return {
-    state: 'completed',
+    state: 'failed',
     stage: 'verify',
-    progress: 100,
-    title: '瀏覽器預覽已就緒',
-    message: '瀏覽器模式不會安裝本機 AI 服務。',
-    model: 'demo-fallback',
+    progress: 0,
+    title: '桌面 Runtime 未連線',
+    message: '瀏覽器預覽不會模擬 Agent Runtime。請使用 Evolabs 桌面版。',
+    error: 'TAURI_DESKTOP_REQUIRED',
     updatedAtUnixMs: Date.now(),
     steps: [
-      { id: 'system', title: '檢查電腦與核心', state: 'done', detail: '瀏覽器預覽' },
-      { id: 'llmster', title: '準備 AI Agent 服務', state: 'done', detail: '瀏覽器預覽' },
-      { id: 'model', title: '下載 Agent 大腦', state: 'done', detail: '瀏覽器預覽' },
-      { id: 'load', title: '載入並最佳化', state: 'done', detail: '瀏覽器預覽' },
-      { id: 'verify', title: '最終健康檢查', state: 'done', detail: '瀏覽器預覽' },
+      { id: 'system', title: '檢查桌面環境', state: 'failed', detail: '目前是瀏覽器預覽' },
+      { id: 'llmster', title: '啟動 Agent 服務', state: 'queued', detail: '等待桌面版' },
+      { id: 'model', title: '準備 Agent 模型', state: 'queued', detail: '等待桌面版' },
+      { id: 'load', title: '載入模型', state: 'queued', detail: '等待桌面版' },
+      { id: 'verify', title: '驗證模型回覆', state: 'queued', detail: '等待桌面版' },
     ],
   };
 }
@@ -485,61 +447,32 @@ export async function getAiRuntimeSetup(): Promise<RuntimeSetupSnapshot> {
 
 export async function startRuntimeSetup(): Promise<{ ok: boolean; message: string }> {
   if (inTauri()) return invoke('start_runtime_setup');
-  return { ok: true, message: '瀏覽器 Demo 已就緒；此模式不會安裝模型。' };
+  return { ok: false, message: '瀏覽器預覽不會模擬本機 Runtime。' };
 }
 
 export async function startRenderJob(project: EvolabsProject, sampleOnly: boolean, sceneId?: string): Promise<{ jobId: string }> {
-  if (inTauri()) return invoke('start_render_job', { project, sampleOnly, sceneId });
-  const selectedScenes = sceneId
-    ? project.scenes.filter((scene) => scene.id === sceneId)
-    : sampleOnly ? project.scenes.slice(0, 3) : project.scenes;
-  if (!selectedScenes.length) throw new Error('至少需要一個分鏡才能開始生成。');
-  const jobId = `demo_job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  demoJobs.set(jobId, {
-    lastAdvancedAt: Date.now(),
-    snapshot: {
-      jobId,
-      projectId: project.id,
-      scope: sceneId ? 'scene' : sampleOnly ? 'sample' : 'full',
-      state: 'queued',
-      stage: 'idle',
-      overallProgress: 0,
-      sceneProgress: 0,
-      elapsedSeconds: 0,
-      scenes: selectedScenes.map((scene) => ({ sceneId: scene.id, state: 'queued', progress: 0 })),
-      message: '瀏覽器 Demo 佇列已建立',
-    },
-  });
-  return { jobId };
+  if (!inTauri()) throw new Error('瀏覽器預覽不會模擬影片生成。請使用桌面版。');
+  return invoke('start_render_job', { project, sampleOnly, sceneId });
 }
 
 export async function getRenderJob(jobId: string): Promise<RenderJobSnapshot> {
-  if (inTauri()) return normalizeRenderJobSnapshot(await invoke<unknown>('get_render_job', { jobId }));
-  const job = demoJobs.get(jobId);
-  if (!job) throw new Error('找不到瀏覽器 Demo 生成工作。');
-  advanceDemoJob(job);
-  return cloneSnapshot(job.snapshot);
+  if (!inTauri()) throw new Error('瀏覽器預覽沒有影片生成工作。');
+  return normalizeRenderJobSnapshot(await invoke<unknown>('get_render_job', { jobId }));
 }
 
 export async function controlRenderJob(jobId: string, action: RenderControlAction): Promise<{ ok: boolean }> {
-  if (inTauri()) return invoke('control_render_job', { jobId, action });
-  const job = demoJobs.get(jobId);
-  if (!job) return { ok: false };
-  if (action === 'pause' && (job.snapshot.state === 'queued' || job.snapshot.state === 'running')) {
-    job.snapshot.state = 'paused';
-    job.snapshot.message = '瀏覽器 Demo 已暫停';
-  } else if (action === 'resume' && job.snapshot.state === 'paused') {
-    job.snapshot.state = 'running';
-    job.snapshot.message = '瀏覽器 Demo 已繼續';
-    job.lastAdvancedAt = Date.now();
-  } else if (action === 'cancel' && !['completed', 'failed', 'canceled'].includes(job.snapshot.state)) {
-    job.snapshot.state = 'canceled';
-    job.snapshot.activeSceneId = undefined;
-    job.snapshot.message = '瀏覽器 Demo 已取消';
-  } else {
-    return { ok: false };
-  }
-  return { ok: true };
+  if (!inTauri()) return { ok: false };
+  return invoke('control_render_job', { jobId, action });
+}
+
+export async function reviewRenderScene(
+  jobId: string,
+  sceneId: string,
+  approved: boolean,
+  feedback = '',
+): Promise<{ ok: boolean; message?: string }> {
+  if (!inTauri()) throw new Error('瀏覽器預覽不能審核本機影片鏡頭。');
+  return invoke('review_render_scene', { jobId, sceneId, approved, feedback });
 }
 
 export async function revealRenderOutput(jobId: string): Promise<{ ok: boolean }> {
@@ -550,7 +483,7 @@ export async function revealRenderOutput(jobId: string): Promise<{ ok: boolean }
 
 export async function getAgentRuntime(): Promise<AgentRuntimeProfile> {
   if (!inTauri()) {
-    return { available: false, provider: 'fallback', message: '瀏覽器預覽使用內建代理規劃器。' };
+    return { available: false, provider: 'unavailable', message: '瀏覽器預覽不會模擬 Agent 回覆。' };
   }
   return invoke<AgentRuntimeProfile>('get_agent_runtime');
 }
@@ -585,7 +518,7 @@ export async function checkAppUpdate(): Promise<AppUpdateInfo> {
     return {
       configured: false,
       available: false,
-      currentVersion: '0.7.0-preview',
+      currentVersion: '0.8.0-beta.1-preview',
       message: '瀏覽器預覽不會安裝桌面更新。',
     };
   }
