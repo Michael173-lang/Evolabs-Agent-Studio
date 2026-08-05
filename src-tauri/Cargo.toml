@@ -1,6 +1,6 @@
 [package]
 name = "evolabs"
-version = "0.7.0"
+version = "0.8.0-beta.1"
 description = "Local-first multi-agent short-film production studio"
 authors = ["Evolabs"]
 edition = "2021"
@@ -16,7 +16,7 @@ tauri-build = { version = "2", features = [] }
 base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 sha2 = "0.10"
 sysinfo = "0.36"
 tauri = { version = "2", features = [] }

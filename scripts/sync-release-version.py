@@ -85,21 +85,37 @@ def main() -> int:
         f"Evolabs v{version} Windows Source Builder",
     )
 
-    app = read("src/App.tsx")
-    app = re.sub(r"Agent Studio \d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", f"Agent Studio {version}", app)
-    app = re.sub(r"Evolabs \d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)? · Agent Studio", f"Evolabs {version} · Agent Studio", app)
-    app = re.sub(r"currentVersion: '\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?'", f"currentVersion: '{version}'", app)
-    app = re.sub(r"currentVersion \|\| '\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?'", f"currentVersion || '{version}'", app)
-    if f"Evolabs {version} · Agent Studio" not in app:
-        raise RuntimeError("Legacy App version marker could not be synchronized.")
-    write("src/App.tsx", app)
+    ui = read("src/studio/ui.tsx")
+    ui = re.sub(r"Agent Studio \d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", f"Agent Studio {version}", ui)
+    write("src/studio/ui.tsx", ui)
+
+    studio = read("src/StudioApp.tsx")
+    studio = re.sub(
+        r"currentVersion:\s*'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?'",
+        f"currentVersion: '{version}'",
+        studio,
+    )
+    write("src/StudioApp.tsx", studio)
+
+    settings = read("src/studio/SettingsView.tsx")
+    settings = re.sub(
+        r"update\.currentVersion \|\| '\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?'",
+        f"update.currentVersion || '{version}'",
+        settings,
+    )
+    write("src/studio/SettingsView.tsx", settings)
 
     bridge = read("src/lib/bridge.ts")
-    bridge = re.sub(r"runtimeVersion: '\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-demo'", f"runtimeVersion: '{version}-demo'", bridge)
-    bridge = re.sub(r"version: '\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-demo'", f"version: '{version}-demo'", bridge)
-    bridge = re.sub(r"currentVersion: '\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-preview'", f"currentVersion: '{version}-preview'", bridge)
-    if f"runtimeVersion: '{version}-demo'" not in bridge:
-        raise RuntimeError("Demo Runtime version marker could not be synchronized.")
+    bridge = re.sub(
+        r"runtimeVersion:\s*'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-preview'",
+        f"runtimeVersion: '{version}-preview'",
+        bridge,
+    )
+    bridge = re.sub(
+        r"currentVersion:\s*'\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?-preview'",
+        f"currentVersion: '{version}-preview'",
+        bridge,
+    )
     write("src/lib/bridge.ts", bridge)
 
     start_here = read("START_HERE.txt")
@@ -113,11 +129,12 @@ def main() -> int:
     notes = ROOT / f"RELEASE_NOTES_v{version}.md"
     if not notes.is_file():
         notes.write_text(
-            f"# Evolabs v{version}\n\n"
+            f"# Evolabs Agent Studio v{version}\n\n"
             "## 本次更新\n\n"
-            "- 重製可靠、低干擾的工作室介面。\n"
-            "- 新增可驗證的編劇交付流程與多模型選擇。\n"
-            "- 強化 Runtime、模型、生成與錯誤狀態回饋。\n",
+            "- 對話區只顯示使用者訊息與實際模型回覆，系統活動獨立記錄。\n"
+            "- 導入正式 Agent 任務契約、共享專案記憶、退件與限次修正流程。\n"
+            "- AI 影片模式只接受真正影片模型輸出，動態漫畫維持獨立標示。\n"
+            "- 重製模型、執行環境、設定、鏡頭審核與響應式介面。\n",
             encoding="utf-8",
         )
 

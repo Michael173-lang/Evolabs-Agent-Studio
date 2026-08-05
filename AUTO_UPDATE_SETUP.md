@@ -50,15 +50,15 @@ SETUP_AUTO_UPDATE.bat
 7. 將私鑰以 GitHub Actions Secret `TAURI_SIGNING_PRIVATE_KEY` 保存；
 8. 將公開金鑰與 `https://github.com/owner/repo/releases/latest/download/latest.json` 寫入 App；
 9. 執行來源驗證；
-10. 推送 `main` 與 `v0.6.0` tag，啟動第一個 Release build；
+10. 推送 `main` 與目前版本 tag，啟動第一個 Release build；
 11. 等待 GitHub Actions 完成；
-12. 自動下載 NSIS `Setup.exe` 到 `release-downloads\v0.6.0`，並詢問是否立即啟動安裝。
+12. 自動下載 NSIS `Setup.exe` 到 `release-downloads\v<目前版本>`，並詢問是否立即啟動安裝。
 
 GitHub Release 會同時包含 NSIS `Setup.exe`、updater signature 與 `latest.json`。
 
 ## 第一次安裝
 
-舊版 Evolabs 沒有新公開金鑰，因此 0.6.0 仍需要安裝一次完整 `Setup.exe`；但不必自己尋找 Release，`SETUP_AUTO_UPDATE.bat` 會在雲端建置成功後自動下載並詢問是否安裝。
+尚未內建正確公開金鑰的舊版仍需要安裝一次完整 `Setup.exe`；但不必自己尋找 Release，`SETUP_AUTO_UPDATE.bat` 會在雲端建置成功後自動下載並詢問是否安裝。
 
 從這個安裝版本開始，後續更新可在 App 內完成：
 

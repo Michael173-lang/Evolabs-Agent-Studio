@@ -4,7 +4,7 @@ import { createAgentWorkspace } from '../lib/agentPipeline';
 
 export function createBlankProject(): EvolabsProject {
   const project: EvolabsProject = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: createId('project'),
     title: '未命名專案',
     story: '',
@@ -17,12 +17,18 @@ export function createBlankProject(): EvolabsProject {
       targetSeconds: 60,
       quality: 'balanced',
       renderMode: 'film',
-      visualMode: 'ai-images',
+      visualMode: 'ai-video',
       imageProvider: 'auto',
+      videoProviderId: 'comfyui-local',
       captions: true,
       lipSync: false,
       autopilot: true,
       keepCharacterIdentity: true,
+      manualShotApproval: true,
+      maxShotRetries: 3,
+      strictCharacterSafety: true,
+      autoSave: true,
+      reducedMotion: false,
     },
     characters: [],
     scenes: [],

@@ -1,10 +1,12 @@
 {
   "id": "rtx3050-4gb",
   "version": 1,
-  "status": "active-sd-cli-profile",
-  "display_name": "RTX 3050 4GB 低顯存配置",
+  "status": "optional-motion-comic-reference-profile",
+  "display_name": "RTX 3050 4GB 動態漫畫參考圖配置（選配）",
   "match": {
-    "gpu_name_contains": ["RTX 3050"],
+    "gpu_name_contains": [
+      "RTX 3050"
+    ],
     "vram_mb_min": 3500,
     "vram_mb_max": 4608,
     "ram_mb_min": 11264
@@ -42,7 +44,9 @@
     "export_fps": 24,
     "encoder": "libx264",
     "preset": "veryfast",
-    "crf": 21
+    "crf": 21,
+    "compatibility": "true-video-experimental-use-comfyui-workflow",
+    "note": "此設定檔只描述動態漫畫與參考圖元件。真正 AI 影片由使用者配置的 ComfyUI 影片工作流執行；4 GB VRAM 屬實驗性相容。"
   },
   "oom_behavior": "stop-current-job-with-actionable-error"
 }

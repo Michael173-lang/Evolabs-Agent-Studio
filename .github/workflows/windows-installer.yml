@@ -52,6 +52,15 @@ jobs:
           python scripts/sync-release-version.py
           cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
 
+      - name: Read release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $isPrerelease = $version.Contains('-').ToString().ToLowerInvariant()
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "prerelease=$isPrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Install exact frontend dependencies
         shell: pwsh
         run: npm ci
@@ -91,11 +100,14 @@ jobs:
           tagName: v__VERSION__
           releaseName: Evolabs Agent Studio v__VERSION__
           releaseBody: |
-            Evolabs Agent Studio v0.7 introduces a reliable script-to-screenwriter flow,
-            a restrained professional interface, selectable local Agent models,
-            clearer Runtime/model diagnostics, and a rebuilt monochrome identity.
+            Evolabs Agent Studio rebuilds the product around auditable AI replies,
+            interactive production Agents, strict task contracts, true ComfyUI video output,
+            per-shot review, and a repaired responsive Traditional Chinese interface.
+
+            Prerelease versions remain experimental until a complete real-workflow Windows
+            video-generation test is approved.
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ steps.release_meta.outputs.prerelease }}
           generateReleaseNotes: true
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true

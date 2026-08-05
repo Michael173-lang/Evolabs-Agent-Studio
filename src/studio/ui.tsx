@@ -1,67 +1,67 @@
-import { Check, LoaderCircle } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`studio-brand ${compact ? 'compact' : ''}`} aria-label="Evolabs">
-      <span className="studio-brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32" role="img">
-          <path d="M8 7.5h16v4H12v3h10v4H12v3h12v4H8z" />
-        </svg>
-      </span>
+    <div className={`brand${compact ? ' brand--compact' : ''}`} aria-label="Evolabs Agent Studio">
+      <span className="brand__mark" aria-hidden="true"><span>E</span></span>
       {!compact && (
-        <span className="studio-brand-copy">
+        <span className="brand__copy">
           <strong>Evolabs</strong>
-          <small>Agent Studio 0.7.0</small>
+          <small>Agent Studio 0.8.0-beta.1</small>
         </span>
       )}
     </div>
   );
 }
 
-export function ProgressBar({ value }: { value: number }) {
-  const width = Math.max(0, Math.min(100, value));
-  return <span className="studio-progress" aria-label={`${Math.round(width)}%`}><i style={{ width: `${width}%` }} /></span>;
-}
-
 export function StatusPill({
   tone = 'neutral',
   children,
 }: {
-  tone?: 'neutral' | 'good' | 'warning' | 'bad' | 'working';
+  tone?: 'neutral' | 'good' | 'warning' | 'danger' | 'working';
   children: ReactNode;
 }) {
-  return <span className={`studio-pill tone-${tone}`}>{tone === 'working' && <LoaderCircle size={12} className="spin" />}{children}</span>;
+  return <span className={`status-pill status-pill--${tone}`}>{children}</span>;
 }
 
-export function CheckLine({ done, children }: { done: boolean; children: ReactNode }) {
+export function ProgressBar({ value, label }: { value: number; label?: string }) {
+  const normalized = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   return (
-    <div className={`studio-check-line ${done ? 'done' : ''}`}>
-      <span>{done ? <Check size={13} /> : null}</span>
-      <p>{children}</p>
+    <div className="progress" aria-label={label ?? `進度 ${Math.round(normalized)}%`}>
+      <span className="progress__fill" style={{ width: `${normalized}%` }} />
     </div>
   );
 }
 
-export function SectionHeading({
+export function SectionHeader({
   eyebrow,
   title,
-  detail,
-  action,
+  description,
+  actions,
 }: {
   eyebrow?: string;
   title: string;
-  detail?: string;
-  action?: ReactNode;
+  description?: string;
+  actions?: ReactNode;
 }) {
   return (
-    <header className="studio-section-heading">
-      <div>
-        {eyebrow && <span>{eyebrow}</span>}
-        <h2>{title}</h2>
-        {detail && <p>{detail}</p>}
+    <header className="section-header">
+      <div className="section-header__copy">
+        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+        <h1>{title}</h1>
+        {description && <p>{description}</p>}
       </div>
-      {action}
+      {actions && <div className="section-header__actions">{actions}</div>}
     </header>
+  );
+}
+
+export function EmptyState({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
+  return (
+    <div className="empty-state">
+      <strong>{title}</strong>
+      <p>{description}</p>
+      {action}
+    </div>
   );
 }

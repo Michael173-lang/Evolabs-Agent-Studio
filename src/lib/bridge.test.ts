@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { createFastPlan } from './planner';
 import {
   controlRenderJob,
   getRenderJob,
@@ -8,20 +7,12 @@ import {
   normalizeModelInstallSnapshot,
   normalizeRenderJobSnapshot,
   revealRenderOutput,
+  reviewRenderScene,
   startRenderJob,
 } from './bridge';
 import { createBlankProject } from '../state/defaultProject';
 
-function projectWithScenes() {
-  const project = createBlankProject();
-  project.story = '一名轉學生在鐘樓裡發現能讓時間倒流的機關。';
-  const plan = createFastPlan(project);
-  project.characters = plan.characters;
-  project.scenes = plan.scenes;
-  return project;
-}
-
-describe('browser render bridge', () => {
+describe('desktop bridge boundaries', () => {
   it('normalizes optional AI capabilities without treating a healthy core as AI-ready', () => {
     const legacy = normalizeHardwareProfile({
       gpu: 'RTX 3050', vramMb: 4096, ramGb: 12, cpu: 'CPU', profile: 'rtx3050-4gb', runtimeReady: true,
@@ -34,7 +25,7 @@ describe('browser render bridge', () => {
       aiReady: true,
       aiProvider: 'Evolabs Local AI',
       capabilities: { comicCore: true, animeImage: true, realisticImage: false, characterConsistency: true, zhVoice: true },
-      modelPacks: [{ id: 'anime-core', name: '動漫核心', status: 'ready', version: '1.0' }],
+      modelPacks: [{ id: 'anime-core', name: '動態漫畫圖片模型', status: 'ready', version: '1.0' }],
     });
     expect(ai.capabilities).toMatchObject({ animeImage: true, characterConsistency: true, imageToVideo: false });
     expect(ai.modelPacks?.[0]).toMatchObject({ id: 'anime-core', status: 'ready' });
@@ -44,19 +35,19 @@ describe('browser render bridge', () => {
     expect(normalizeModelInstallSnapshot({
       installId: 'install_1',
       packId: 'anime-core',
-      packName: '動漫核心',
+      packName: '動態漫畫圖片模型',
       state: 'running',
       progress: 132,
       downloadedBytes: 1024,
       totalBytes: 2048,
       fileName: 'model.safetensors',
-    })).toMatchObject({ installId: 'install_1', packId: 'anime-core', packName: '動漫核心', state: 'running', progress: 100, downloadedBytes: 1024 });
+    })).toMatchObject({ installId: 'install_1', packId: 'anime-core', state: 'running', progress: 100, downloadedBytes: 1024 });
     expect(normalizeModelInstallSnapshot({
       installId: 'install_2', state: 'failed', error: { message: '雜湊驗證失敗' },
     }).error).toBe('雜湊驗證失敗');
   });
 
-  it('normalizes functional-core status files at the bridge boundary', () => {
+  it('normalizes legacy engine states while clearly labeling static motion as motion comic', () => {
     const snapshot = normalizeRenderJobSnapshot({
       jobId: 'job_00000000-0000-0000-0000-000000000000',
       projectId: 'project_test',
@@ -79,8 +70,8 @@ describe('browser render bridge', () => {
       activeSceneId: 'scene_b',
     });
     expect(snapshot.scenes).toEqual([
-      { sceneId: 'scene_a', state: 'done', progress: 100, previewPath: 'C:\\Evolabs\\preview.png', visualSource: 'card', voiceProfile: '少女・清冷' },
-      { sceneId: 'scene_b', state: 'working', progress: 48, previewPath: undefined, visualSource: undefined, voiceProfile: undefined },
+      { sceneId: 'scene_a', state: 'done', progress: 100, previewPath: 'C:\\Evolabs\\preview.png', visualSource: 'motion-comic', voiceProfile: '少女・清冷', generationAttempt: undefined, reviewState: undefined, reviewFeedback: undefined, qualityChecks: undefined, providerId: undefined, modelName: undefined },
+      { sceneId: 'scene_b', state: 'working', progress: 48, previewPath: undefined, visualSource: undefined, voiceProfile: undefined, generationAttempt: undefined, reviewState: undefined, reviewFeedback: undefined, qualityChecks: undefined, providerId: undefined, modelName: undefined },
     ]);
   });
 
@@ -107,49 +98,12 @@ describe('browser render bridge', () => {
     expect(canceled.state).toBe('canceled');
   });
 
-  it('keeps demo simulation behind the render-job contract and preserves scene ids', async () => {
+  it('never simulates video generation in a browser preview', async () => {
     expect(isDemoBridge()).toBe(true);
-    const project = projectWithScenes();
-    const created = await startRenderJob(project, true);
-    const snapshot = await getRenderJob(created.jobId);
-
-    expect(snapshot.jobId).toBe(created.jobId);
-    expect(snapshot.projectId).toBe(project.id);
-    expect(snapshot.scope).toBe('sample');
-    expect(snapshot.state).toBe('running');
-    expect(snapshot.scenes.map((scene) => scene.sceneId)).toEqual(project.scenes.slice(0, 3).map((scene) => scene.id));
-    expect(snapshot.activeSceneId).toBe(project.scenes[0].id);
-  });
-
-  it('supports pause, resume, and cancel through bridge controls', async () => {
-    const project = projectWithScenes();
-    const { jobId } = await startRenderJob(project, false);
-    await getRenderJob(jobId);
-
-    expect(await controlRenderJob(jobId, 'pause')).toEqual({ ok: true });
-    expect((await getRenderJob(jobId)).state).toBe('paused');
-    expect(await controlRenderJob(jobId, 'resume')).toEqual({ ok: true });
-    expect((await getRenderJob(jobId)).state).toBe('running');
-    expect(await controlRenderJob(jobId, 'cancel')).toEqual({ ok: true });
-    expect((await getRenderJob(jobId)).state).toBe('canceled');
-    expect(await revealRenderOutput(jobId)).toEqual({ ok: false });
-  });
-
-  it('reports completion and labels the browser output as non-materialized demo data', async () => {
-    const project = projectWithScenes();
-    const { jobId } = await startRenderJob(project, false);
-    let snapshot = await getRenderJob(jobId);
-    for (let index = 0; index < 20 && snapshot.state !== 'completed'; index += 1) {
-      snapshot = await getRenderJob(jobId);
-    }
-
-    expect(snapshot.state).toBe('completed');
-    expect(snapshot.stage).toBe('complete');
-    expect(snapshot.scenes.every((scene) => scene.state === 'done' && scene.progress === 100)).toBe(true);
-    expect(snapshot.outputPath).toContain('未產生實體 MP4');
-  });
-
-  it('rejects a render with no scenes', async () => {
-    await expect(startRenderJob(createBlankProject(), false)).rejects.toThrow('至少需要一個分鏡');
+    await expect(startRenderJob(createBlankProject(), false)).rejects.toThrow('瀏覽器預覽不會模擬影片生成');
+    await expect(getRenderJob('job_test')).rejects.toThrow('瀏覽器預覽沒有影片生成工作');
+    await expect(reviewRenderScene('job_test', 'scene_test', true)).rejects.toThrow('瀏覽器預覽不能審核本機影片鏡頭');
+    expect(await controlRenderJob('job_test', 'pause')).toEqual({ ok: false });
+    expect(await revealRenderOutput('job_test')).toEqual({ ok: false });
   });
 });

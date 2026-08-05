@@ -3,8 +3,6 @@ use serde_json::Value;
 use std::{
     env,
     fs::{self, OpenOptions},
-    io::{Read, Write},
-    net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{atomic::{AtomicBool, Ordering}, Mutex, OnceLock},
@@ -23,6 +21,8 @@ const DEFAULT_MODEL_QUERY: &str = "qwen/qwen3-4b-2507@q4_k_m";
 const MODEL_MATCH: &str = "qwen3-4b-2507";
 const MODEL_IDENTIFIER: &str = "evolabs-agent";
 const SERVER_PORT: u16 = 1234;
+const API_VERIFY_ATTEMPTS: usize = 120;
+const API_VERIFY_INTERVAL: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -64,17 +64,17 @@ fn initial_snapshot() -> RuntimeSetupSnapshot {
         state: "idle".into(),
         stage: "system".into(),
         progress: 0.0,
-        title: "準備 Evolabs AI Studio".into(),
-        message: "等待開始。".into(),
+        title: "準備 Evolabs 本機 AI 執行環境".into(),
+        message: "尚未開始設定。".into(),
         model: None,
         error: None,
         updated_at_unix_ms: now_ms(),
         steps: vec![
-            RuntimeSetupStep { id: "system".into(), title: "檢查電腦與核心".into(), state: "queued".into(), detail: "確認本機引擎、GPU 與儲存空間".into() },
-            RuntimeSetupStep { id: "llmster".into(), title: "準備 AI Agent 服務".into(), state: "queued".into(), detail: "安裝或修復 LM Studio llmster 後台".into() },
-            RuntimeSetupStep { id: "model".into(), title: "下載 Agent 大腦".into(), state: "queued".into(), detail: "依硬體選擇本機模型與量化".into() },
-            RuntimeSetupStep { id: "load".into(), title: "載入並最佳化".into(), state: "queued".into(), detail: "設定 GPU offload、上下文與自動卸載".into() },
-            RuntimeSetupStep { id: "verify".into(), title: "最終健康檢查".into(), state: "queued".into(), detail: "確認 Agent API 可直接被 Evolabs 使用".into() },
+            RuntimeSetupStep { id: "system".into(), title: "檢查系統需求".into(), state: "queued".into(), detail: "確認作業系統、GPU、記憶體與可用儲存空間".into() },
+            RuntimeSetupStep { id: "llmster".into(), title: "準備 Agent 模型服務".into(), state: "queued".into(), detail: "安裝或修復 LM Studio 本機模型服務".into() },
+            RuntimeSetupStep { id: "model".into(), title: "取得 Agent 模型".into(), state: "queued".into(), detail: "依據硬體選擇合適的本機模型版本".into() },
+            RuntimeSetupStep { id: "load".into(), title: "載入模型並配置效能".into(), state: "queued".into(), detail: "配置 GPU 使用量、上下文長度與閒置卸載".into() },
+            RuntimeSetupStep { id: "verify".into(), title: "驗證模型服務".into(), state: "queued".into(), detail: "確認 Evolabs 可以正常呼叫本機 Agent 模型".into() },
         ],
     }
 }
@@ -162,8 +162,8 @@ fn complete(app: &AppHandle, model: String) {
     snapshot.state = "completed".into();
     snapshot.stage = "verify".into();
     snapshot.progress = 100.0;
-    snapshot.title = "Evolabs AI Studio 已就緒".into();
-    snapshot.message = "AI Agent 後台、模型與本機 API 都已自動準備完成。".into();
+    snapshot.title = "Evolabs 本機 AI 執行環境已就緒".into();
+    snapshot.message = "Agent 模型服務與本機 API 已完成驗證。".into();
     snapshot.model = Some(model);
     snapshot.error = None;
     snapshot.updated_at_unix_ms = now_ms();
@@ -287,37 +287,56 @@ fn downloaded_model(lms: &Path) -> Option<String> {
     serde_json::from_str::<Value>(&output).ok().and_then(|value| find_model_key(&value))
 }
 
+fn preferred_api_model(models: &[String]) -> Option<String> {
+    models
+        .iter()
+        .find(|id| id.as_str() == MODEL_IDENTIFIER)
+        .or_else(|| {
+            models
+                .iter()
+                .find(|id| id.to_ascii_lowercase().contains(MODEL_MATCH))
+        })
+        .or_else(|| models.first())
+        .cloned()
+}
+
 fn api_model() -> Option<String> {
-    let address = SocketAddr::from(([127, 0, 0, 1], SERVER_PORT));
-    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(3)).ok()?;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(3)));
-    stream.write_all(b"GET /v1/models HTTP/1.1\r\nHost: 127.0.0.1:1234\r\nConnection: close\r\n\r\n").ok()?;
-    let mut bytes = Vec::new();
-    stream.take(4 * 1024 * 1024).read_to_end(&mut bytes).ok()?;
-    let text = String::from_utf8_lossy(&bytes);
-    if !text.starts_with("HTTP/1.1 200") && !text.starts_with("HTTP/1.0 200") { return None; }
-    let body = text.split("\r\n\r\n").nth(1)?;
-    let value: Value = serde_json::from_str(body).ok()?;
-    let items = value.get("data").and_then(Value::as_array)?;
-    items
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
+        .timeout(Duration::from_secs(8))
+        .build()
+        .ok()?;
+    let value = client
+        .get(format!("http://127.0.0.1:{SERVER_PORT}/v1/models"))
+        .send()
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .json::<Value>()
+        .ok()?;
+    let models = value
+        .get("data")
+        .and_then(Value::as_array)?
         .iter()
         .filter_map(|item| item.get("id").and_then(Value::as_str))
-        .find(|id| *id == MODEL_IDENTIFIER || id.to_ascii_lowercase().contains(MODEL_MATCH))
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.chars().count() <= 512)
         .map(str::to_string)
+        .collect::<Vec<_>>();
+    preferred_api_model(&models)
 }
 
 fn run_setup(app: AppHandle) {
     let result = (|| -> Result<String, (String, String)> {
-        update(&app, "system", 8.0, "正在檢查本機核心", "確認 Evolabs 引擎與 Windows 執行環境。", "working", None);
+        update(&app, "system", 8.0, "正在檢查本機 AI 執行環境", "確認 Windows、Evolabs 引擎與本機模型服務狀態。", "working", None);
         thread::sleep(Duration::from_millis(350));
 
         if let Some(model) = api_model() {
-            update(&app, "verify", 96.0, "正在驗證現有 Agent", "已發現可直接使用的本機模型。", "working", Some(model.clone()));
+            update(&app, "verify", 96.0, "正在驗證現有 Agent 模型", "已偵測到可直接使用的本機模型。", "working", Some(model.clone()));
             return Ok(model);
         }
 
-        update(&app, "llmster", 18.0, "正在準備 AI Agent 服務", "Evolabs 會使用 LM Studio 官方 llmster 後台，不需要另開 LM Studio。", "working", None);
+        update(&app, "llmster", 18.0, "正在準備 Agent 模型服務", "Evolabs 會使用 LM Studio 官方 llmster 後台，不需要另開 LM Studio。", "working", None);
         let lms = match find_lms() {
             Some(path) => path,
             None => install_llmster(&app).map_err(|error| ("llmster".into(), error))?,
@@ -333,13 +352,13 @@ fn run_setup(app: AppHandle) {
             update(&app, "model", 62.0, "Agent 模型已存在", "直接使用已下載的 Qwen3 4B 量化模型。", "done", Some(model.clone()));
             model
         } else {
-            update(&app, "model", 38.0, "正在下載 Agent 大腦", "第一次需要下載約數 GB；Evolabs 會自動續用，不必每次重抓。", "working", None);
+            update(&app, "model", 38.0, "正在取得 Agent 模型", "第一次需要下載約數 GB；Evolabs 會自動續用，不必每次重抓。", "working", None);
             run_logged(&app, &lms, &["get", DEFAULT_MODEL_QUERY, "--gguf"], "agent-model-download", Duration::from_secs(90 * 60))
                 .map_err(|error| ("model".into(), error))?;
             downloaded_model(&lms).ok_or_else(|| ("model".into(), "模型下載完成，但無法從 lms ls 找到模型。".into()))?
         };
 
-        update(&app, "load", 76.0, "正在載入並最佳化模型", "依本機硬體自動設定 GPU offload、8K 上下文與閒置卸載。", "working", Some(model_key.clone()));
+        update(&app, "load", 76.0, "正在載入 Agent 模型並配置效能", "依本機硬體設定 GPU 使用量、8K 上下文與閒置卸載。", "working", Some(model_key.clone()));
         let _ = run_logged(&app, &lms, &["unload", "--all"], "agent-model-unload", Duration::from_secs(90));
         run_logged(
             &app,
@@ -350,12 +369,12 @@ fn run_setup(app: AppHandle) {
         ).map_err(|error| ("load".into(), error))?;
         let _ = run_logged(&app, &lms, &["server", "start", "--port", "1234"], "llmster-server-final", Duration::from_secs(90));
 
-        update(&app, "verify", 94.0, "正在做最終健康檢查", "確認 Evolabs 能從 127.0.0.1:1234 呼叫本機 Agent。", "working", Some(model_key));
-        for _ in 0..20 {
+        update(&app, "verify", 94.0, "正在驗證 Agent 模型服務", "確認 Evolabs 能透過 127.0.0.1:1234 取得已載入模型。", "working", Some(model_key));
+        for _ in 0..API_VERIFY_ATTEMPTS {
             if let Some(model) = api_model() { return Ok(model); }
-            thread::sleep(Duration::from_millis(750));
+            thread::sleep(API_VERIFY_INTERVAL);
         }
-        Err(("verify".into(), "llmster 已啟動，但 1234 API 尚未回應模型清單。".into()))
+        Err(("verify".into(), "llmster 已啟動，但本機 API 在 90 秒內仍未回傳任何已載入模型。".into()))
     })();
 
     match result {
@@ -381,4 +400,25 @@ pub fn start_setup(app: AppHandle, force: bool) -> RuntimeSetupSnapshot {
     let worker_app = app.clone();
     thread::spawn(move || run_setup(worker_app));
     current_snapshot()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::preferred_api_model;
+
+    #[test]
+    fn runtime_prefers_evolabs_alias_then_recommended_qwen() {
+        let models = vec!["other-model".to_string(), "qwen3-4b-2507-q4".to_string(), "evolabs-agent".to_string()];
+        assert_eq!(preferred_api_model(&models).as_deref(), Some("evolabs-agent"));
+        let models = vec!["other-model".to_string(), "Qwen3-4B-2507-Q4".to_string()];
+        assert_eq!(preferred_api_model(&models).as_deref(), Some("Qwen3-4B-2507-Q4"));
+    }
+
+    #[test]
+    fn runtime_accepts_any_valid_loaded_model() {
+        let models = vec!["local-coding-model".to_string()];
+        assert_eq!(preferred_api_model(&models).as_deref(), Some("local-coding-model"));
+        assert!(preferred_api_model(&[]).is_none());
+    }
 }

@@ -1,6 +1,9 @@
 name: Validate Evolabs source
 
 on:
+  push:
+    branches:
+      - "agent/v0.8.0-real-video-studio"
   pull_request:
     branches:
       - "main"

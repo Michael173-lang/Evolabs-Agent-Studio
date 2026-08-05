@@ -20,15 +20,16 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
-from .image_cache import AiImageCache, ai_image_cache_key
 from .image_providers import (
-    GeneratedImage,
     ImageGenerationRequest,
-    ImageProviderError,
     LocalImageProvider,
-    ProviderCapability,
     safe_generation_dimensions,
-    select_image_provider,
+)
+from .video_providers import (
+    ComfyUiVideoProvider,
+    GeneratedVideo,
+    VideoGenerationRequest,
+    VideoProviderError,
 )
 from .lipsync_provider import (
     LipSyncProviderError,
@@ -1160,6 +1161,198 @@ def _encode_scene(
     os.replace(temporary, destination)
 
 
+
+def _render_video_overlay(
+    scene: dict[str, Any],
+    size: tuple[int, int],
+    font_path: Path | None,
+    captions: bool,
+    destination: Path,
+) -> Path | None:
+    if not captions or not str(scene.get("dialogue") or "").strip():
+        return None
+    width, height = size
+    image = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image, "RGBA")
+    margin = max(24, int(width * 0.055))
+    dialogue_font = _load_font(font_path, max(23, int(width * 0.044)))
+    dialogue = str(scene.get("dialogue") or "").strip()
+    panel_height = max(int(height * 0.14), int(width * 0.25))
+    panel_top = height - panel_height - margin
+    draw.rounded_rectangle(
+        (margin, panel_top, width - margin, height - margin),
+        radius=max(18, int(width * 0.035)),
+        fill=(5, 6, 8, 205),
+        outline=(255, 255, 255, 38),
+        width=1,
+    )
+    lines = _wrap_text(draw, dialogue, dialogue_font, width - margin * 3, 3)
+    line_height = max(30, int(width * 0.058))
+    start_y = panel_top + max(18, (panel_height - len(lines) * line_height) // 2)
+    for line_index, line in enumerate(lines):
+        _draw_text(
+            draw,
+            (margin + margin // 2, start_y + line_index * line_height),
+            line,
+            dialogue_font,
+            (255, 255, 255, 245),
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    image.save(destination, format="PNG", optimize=True)
+    return destination
+
+
+def _encode_video_scene(
+    ffmpeg: Path,
+    source_video: Path,
+    overlay: Path | None,
+    voice: Path | None,
+    destination: Path,
+    duration: float,
+    size: tuple[int, int],
+    quality: str,
+    fps: int,
+) -> None:
+    width, height = size
+    fade = min(0.24, max(0.10, duration / 7))
+    fade_out = max(fade, duration - fade)
+    temporary = destination.with_name(f".{destination.stem}.partial.mp4")
+    temporary.unlink(missing_ok=True)
+    arguments = [str(ffmpeg), "-hide_banner", "-loglevel", "error", "-y", "-i", str(source_video)]
+    overlay_index: int | None = None
+    if overlay is not None:
+        overlay_index = 1
+        arguments.extend(["-loop", "1", "-i", str(overlay)])
+    audio_index = 2 if overlay_index is not None else 1
+    if voice is not None:
+        arguments.extend(["-i", str(voice)])
+    else:
+        arguments.extend(["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"])
+
+    base_filter = (
+        f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height},fps={fps},"
+        f"tpad=stop_mode=clone:stop_duration={duration:.3f},"
+        f"trim=duration={duration:.3f},setpts=PTS-STARTPTS[base]"
+    )
+    if overlay_index is not None:
+        video_filter = (
+            f"{base_filter};[base][{overlay_index}:v]overlay=0:0:format=auto,"
+            f"fade=t=in:st=0:d={fade:.3f},fade=t=out:st={fade_out:.3f}:d={fade:.3f},format=yuv420p[v]"
+        )
+    else:
+        video_filter = (
+            f"{base_filter};[base]fade=t=in:st=0:d={fade:.3f},"
+            f"fade=t=out:st={fade_out:.3f}:d={fade:.3f},format=yuv420p[v]"
+        )
+    audio_filter = (
+        f"[{audio_index}:a]aresample=48000,apad=pad_dur={duration:.3f},atrim=duration={duration:.3f},"
+        f"afade=t=in:st=0:d={fade:.3f},afade=t=out:st={fade_out:.3f}:d={fade:.3f}[a]"
+    )
+    encoder_preset, crf = {
+        "speed": ("ultrafast", "25"),
+        "cinema": ("medium", "18"),
+    }.get(quality, ("veryfast", "21"))
+    arguments.extend([
+        "-filter_complex", f"{video_filter};{audio_filter}",
+        "-map", "[v]", "-map", "[a]", "-t", f"{duration:.3f}",
+        "-c:v", "libx264", "-preset", encoder_preset, "-crf", crf,
+        "-pix_fmt", "yuv420p", "-r", str(fps), "-g", str(fps * 2),
+        "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+        "-movflags", "+faststart", "-f", "mp4", str(temporary),
+    ])
+    _run_process(arguments, max(300, duration * 40), "FFMPEG_VIDEO_SCENE_FAILED", "無法整理影片模型輸出的鏡頭。")
+    if not temporary.is_file() or temporary.stat().st_size < 2048:
+        raise RenderError("FFMPEG_VIDEO_SCENE_EMPTY", "影片模型鏡頭沒有產生有效的 MP4。", str(destination))
+    _validate_video(ffmpeg, temporary)
+    os.replace(temporary, destination)
+
+
+def _probe_video_duration(ffmpeg: Path, path: Path) -> float:
+    try:
+        result = subprocess.run(
+            [str(ffmpeg), "-hide_banner", "-i", str(path), "-f", "null", "-"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+            check=False,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RenderError("VIDEO_DURATION_PROBE_FAILED", "無法檢查影片鏡頭長度。", str(error)) from error
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
+    if not match:
+        raise RenderError("VIDEO_DURATION_PROBE_FAILED", "影片鏡頭缺少可辨識的長度資訊。")
+    hours, minutes, seconds = match.groups()
+    return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def _video_quality_checks(ffmpeg: Path, path: Path, expected_duration: float) -> tuple[list[dict[str, Any]], bool]:
+    checks: list[dict[str, Any]] = []
+    _validate_video(ffmpeg, path)
+    checks.append({"id": "decode", "label": "影片可完整解碼", "state": "passed", "detail": "FFmpeg 已完整解碼影片與音訊串流。"})
+    measured = _probe_video_duration(ffmpeg, path)
+    tolerance = max(0.75, expected_duration * 0.22)
+    duration_ok = abs(measured - expected_duration) <= tolerance
+    checks.append({
+        "id": "duration",
+        "label": "影片長度符合分鏡",
+        "state": "passed" if duration_ok else "failed",
+        "detail": f"預期 {expected_duration:.2f} 秒；實際 {measured:.2f} 秒。",
+    })
+
+    black = _run_process(
+        [str(ffmpeg), "-hide_banner", "-loglevel", "info", "-i", str(path), "-vf", "blackdetect=d=0.35:pix_th=0.10", "-an", "-f", "null", "-"],
+        300,
+        "VIDEO_BLACK_CHECK_FAILED",
+        "無法檢查影片黑畫面。",
+    )
+    black_durations = [float(value) for value in re.findall(r"black_duration:([0-9.]+)", black.stderr or "")]
+    excessive_black = sum(black_durations) > max(0.8, expected_duration * 0.35)
+    checks.append({
+        "id": "black-frame",
+        "label": "黑畫面檢查",
+        "state": "failed" if excessive_black else "passed",
+        "detail": "偵測到過長黑畫面。" if excessive_black else "未偵測到會阻斷成片的長黑畫面。",
+    })
+
+    frozen = _run_process(
+        [str(ffmpeg), "-hide_banner", "-loglevel", "info", "-i", str(path), "-vf", "freezedetect=n=-50dB:d=1.0", "-an", "-f", "null", "-"],
+        300,
+        "VIDEO_FREEZE_CHECK_FAILED",
+        "無法檢查影片凍結畫面。",
+    )
+    freeze_durations = [float(value) for value in re.findall(r"lavfi\.freezedetect\.freeze_duration: ([0-9.]+)", frozen.stderr or "")]
+    excessive_freeze = max(freeze_durations, default=0.0) > max(1.5, expected_duration * 0.5)
+    checks.append({
+        "id": "frozen-frame",
+        "label": "動態連續性檢查",
+        "state": "failed" if excessive_freeze else "passed",
+        "detail": "鏡頭大部分時間沒有可辨識動態。" if excessive_freeze else "未偵測到會阻斷成片的長時間凍結。",
+    })
+    checks.append({
+        "id": "semantic-safety",
+        "label": "人物與內容語意安全",
+        "state": "unavailable",
+        "detail": "本機尚未配置可靠的視覺語意檢查模型；因此此鏡頭必須由使用者人工核准。",
+    })
+    checks.append({
+        "id": "human-review",
+        "label": "人工鏡頭核准",
+        "state": "pending",
+        "detail": "只有使用者核准後，這個鏡頭才會進入最終成片。",
+    })
+    return checks, duration_ok and not excessive_black and not excessive_freeze
+
+
+def _review_file(job_directory: Path, scene_id: str) -> Path:
+    digest = hashlib.sha256(scene_id.encode("utf-8")).hexdigest()
+    return job_directory / "reviews" / f"{digest}.json"
+
 def _concat_scenes(ffmpeg: Path, clips: list[Path], destination: Path, working_directory: Path) -> None:
     if not clips:
         raise RenderError("NO_SCENES", "沒有可合併的鏡頭。")
@@ -1256,8 +1449,13 @@ def _validate_project(
         raise RenderError("INVALID_PROJECT", "專案設定格式不正確。")
     if settings.get("mode", "anime") not in {"anime", "realistic"}:
         raise RenderError("INVALID_PROJECT", "專案圖片風格不受支援。")
-    if settings.get("visualMode", "cards") not in {"cards", "ai-images"}:
+    raw_visual_mode = settings.get("visualMode", "motion-comic")
+    if raw_visual_mode not in {"ai-video", "motion-comic", "cards", "ai-images"}:
         raise RenderError("INVALID_PROJECT", "專案畫面生成模式不受支援。")
+    if raw_visual_mode == "ai-video":
+        provider = project.get("_videoProvider")
+        if not isinstance(provider, dict) or provider.get("kind") != "comfyui":
+            raise RenderError("VIDEO_PROVIDER_NOT_CONFIGURED", "AI 影片模式必須連接可用的本機 ComfyUI 影片模型服務。")
     raw_scenes = project.get("scenes")
     if not isinstance(raw_scenes, list) or not raw_scenes:
         raise RenderError("NO_SCENES", "至少需要一個分鏡才能生成影片。")
@@ -1315,7 +1513,11 @@ def _validate_project(
         # merely because the selected scene becomes item zero in the job.
         scene["_evolabsSceneNumber"] = index + 1
         scene["duration"] = max(1.0, min(30.0, duration))
-        for field in ("title", "visual", "dialogue", "shot"):
+        for field in (
+            "title", "visual", "dialogue", "shot", "composition", "action", "emotion",
+            "startFramePrompt", "endFramePrompt", "motionPrompt", "videoPrompt", "negativePrompt",
+            "transition", "continuityIn", "continuityOut", "reviewFeedback",
+        ):
             raw_value = scene.get(field, "")
             if raw_value is not None and not isinstance(raw_value, str):
                 raise RenderError("INVALID_SCENE", f"第 {index + 1} 鏡的 {field} 欄位格式不正確。")
@@ -1377,43 +1579,34 @@ class RenderJob:
         self.started = time.monotonic()
         self.info = runtime_info()
         settings = self.project.get("settings") if isinstance(self.project.get("settings"), dict) else {}
-        self.visual_mode = "ai-images" if settings.get("visualMode") == "ai-images" else "cards"
-        self.image_provider: LocalImageProvider | None = image_provider
-        self.image_capability: ProviderCapability | None = None
-        self.image_provider_error: ImageProviderError | None = None
-        self.image_cache = AiImageCache(self.data_root)
-        if self.visual_mode == "ai-images":
-            if self.image_provider is None:
-                try:
-                    self.image_provider, self.image_capability = select_image_provider(self.data_root, settings)
-                except ImageProviderError as error:
-                    self.image_provider_error = error
-            else:
-                self.image_capability = self.image_provider.probe()
-                if not self.image_capability.ready:
-                    self.image_provider_error = ImageProviderError(
-                        "AI_IMAGE_UNAVAILABLE", self.image_capability.message, json.dumps(self.image_capability.details, ensure_ascii=False)
-                    )
-            if self.image_capability and self.image_capability.ready and self.image_capability.provider_id != "automatic1111":
-                declared = set(self.image_capability.details.get("imageCapabilities", []))
-                requested_mode = settings.get("mode", "anime")
-                required = {"anime_image", "animeImage"} if requested_mode == "anime" else {"realistic_image", "realisticImage"}
-                if not declared.intersection(required):
-                    label = "動漫" if requested_mode == "anime" else "寫實"
-                    self.image_provider_error = ImageProviderError(
-                        "AI_STYLE_UNAVAILABLE",
-                        f"目前啟用的模型包未宣告支援{label}圖片模式。",
-                        self.image_capability.model_name,
-                    )
+        raw_visual_mode = settings.get("visualMode", "motion-comic")
+        self.visual_mode = "ai-video" if raw_visual_mode == "ai-video" else "motion-comic"
+        # Kept only for backward-compatible constructor calls. The active renderer never
+        # invokes still-image providers for AI video generation.
+        _ = image_provider
+        self.video_provider: ComfyUiVideoProvider | None = None
+        self.video_provider_error: VideoProviderError | None = None
+        if self.visual_mode == "ai-video":
+            try:
+                self.video_provider = ComfyUiVideoProvider.from_project(
+                    self.project, cancel_requested=lambda: self._control_action() == "cancel"
+                )
+            except VideoProviderError as error:
+                self.video_provider_error = error
         self.lip_sync_requested = settings.get("lipSync") is True
         self.lip_sync_provider = lip_sync_provider
         self.lip_sync_capability = None
         self.lip_sync_error: LipSyncProviderError | None = None
         if self.lip_sync_requested:
-            if self.visual_mode != "ai-images":
+            if self.visual_mode == "ai-video":
                 self.lip_sync_error = LipSyncProviderError(
-                    "LIPSYNC_REQUIRES_AI_IMAGES",
-                    "單人對嘴只會套用在真正的 AI 人物畫面。",
+                    "LIPSYNC_NOT_IMPLEMENTED_FOR_VIDEO",
+                    "AI 影片模式目前尚未支援經驗證的本機口型同步。請先關閉口型同步。",
+                )
+            elif self.visual_mode != "motion-comic":
+                self.lip_sync_error = LipSyncProviderError(
+                    "LIPSYNC_MODE_INVALID",
+                    "目前生成模式不支援口型同步。",
                 )
             else:
                 if self.lip_sync_provider is None:
@@ -1453,7 +1646,7 @@ class RenderJob:
             "projectId": self.project["id"],
             "scope": self.scope,
             "visualMode": self.visual_mode,
-            "aiProvider": self.image_capability.provider_id if self.image_capability and self.image_capability.ready else None,
+            "aiProvider": "comfyui-local" if self.visual_mode == "ai-video" and self.video_provider else None,
             "lipSyncProvider": self.lip_sync_capability.provider_id if self.lip_sync_capability and self.lip_sync_capability.ready else None,
             "state": "queued",
             "stage": "idle",
@@ -1481,6 +1674,12 @@ class RenderJob:
                     "progress": 0.0,
                     "previewPath": None,
                     "visualSource": None,
+                    "generationAttempt": 0,
+                    "reviewState": None,
+                    "reviewFeedback": None,
+                    "qualityChecks": [],
+                    "providerId": None,
+                    "modelName": None,
                 }
                 for scene in self.scenes
             ],
@@ -1556,72 +1755,406 @@ class RenderJob:
                 self._write()
                 last_heartbeat = time.monotonic()
 
-    def _prepare_character_assets(self) -> int:
-        if self.visual_mode != "ai-images" or self.image_provider is None or self.image_capability is None:
-            return 0
-        characters = [item for item in self.project.get("characters", []) if isinstance(item, dict)]
-        if not characters:
-            return 0
-        self.character_assets_directory.mkdir(parents=True, exist_ok=True)
-        generated_count = 0
-        for index, character in enumerate(characters):
-            self.checkpoint()
-            snapshot = self.status["characterAssets"][index]
-            snapshot["state"] = "working"
-            snapshot["progress"] = 10.0
-            self.status["state"] = "running"
-            self.status["stage"] = "visual"
-            self.status["activeSceneId"] = None
-            self.status["overallProgress"] = min(9.0, ((index + 0.1) / max(1, len(characters))) * 9.0)
-            self.status["message"] = f"角色設計師正在建立 {snapshot['name']} 的身份參考資產"
-            self._write()
-
-            safe_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(character.get("id") or f"character_{index + 1}"))[:80]
-            destination = self.character_assets_directory / f"{safe_id}.png"
-            imported = _materialize_reference(character, self.character_assets_directory / "imported")
-            if imported is not None:
-                character["referenceImagePath"] = str(imported.resolve())
-                snapshot["previewPath"] = str(imported.resolve())
-                snapshot["state"] = "done"
-                snapshot["progress"] = 100.0
-                snapshot["generated"] = False
-                self._write()
+    def _scene_reference_image(self, scene: dict[str, Any]) -> Path | None:
+        by_id = {
+            str(character.get("id")): character
+            for character in self.project.get("characters", [])
+            if isinstance(character, dict) and isinstance(character.get("id"), str)
+        }
+        references: list[dict[str, Any]] = []
+        for character_id in scene.get("characterIds", []):
+            character = by_id.get(str(character_id))
+            if not isinstance(character, dict):
                 continue
+            has_path = isinstance(character.get("referenceImagePath"), str) and bool(character.get("referenceImagePath", "").strip())
+            has_data = isinstance(character.get("referenceImageDataUrl"), str) and bool(character.get("referenceImageDataUrl", "").strip())
+            if has_path or has_data:
+                references.append(character)
+        # A single reference image is safe and unambiguous. Multiple characters require
+        # an explicitly prepared group reference; choosing one person would misrepresent
+        # identity consistency.
+        if len(references) != 1:
+            return None
+        return _materialize_reference(references[0], self.work_directory / "references")
 
-            request = _character_reference_request(self.project, character, index + 1)
-            reused = _valid_reference_asset(destination, (request.width, request.height))
-            generated_now = False
-            if not reused:
+    def _scene_video_prompt(self, scene: dict[str, Any], feedback: str = "") -> tuple[str, str]:
+        characters = {
+            str(character.get("id")): character
+            for character in self.project.get("characters", [])
+            if isinstance(character, dict) and isinstance(character.get("id"), str)
+        }
+        character_rules: list[str] = []
+        negative_rules: list[str] = []
+        for character_id in scene.get("characterIds", []):
+            character = characters.get(str(character_id))
+            if not isinstance(character, dict):
+                continue
+            name = str(character.get("name") or "角色")
+            age = str(character.get("age") or "劇本指定年齡")
+            wardrobe = str(character.get("wardrobe") or "完整且符合場景的服裝")
+            appearance = str(character.get("identityAnchor") or character.get("appearance") or "固定外觀")
+            character_rules.append(f"{name}：{age}，{wardrobe}，{appearance}")
+            if character.get("negativePrompt"):
+                negative_rules.append(str(character.get("negativePrompt")))
+        prompt = str(scene.get("videoPrompt") or "").strip()
+        if not prompt:
+            prompt = ", ".join(
+                item
+                for item in (
+                    str(scene.get("visual") or ""),
+                    str(scene.get("action") or ""),
+                    str(scene.get("emotion") or ""),
+                    str(scene.get("motionPrompt") or scene.get("shot") or ""),
+                    str(scene.get("composition") or ""),
+                )
+                if item.strip()
+            )
+        prompt = (
+            f"{prompt}. Character continuity: {'; '.join(character_rules) or 'no visible people'}. "
+            "Every visible person has one normal head, exactly two eyes, anatomically normal arms and legs, "
+            "complete non-transparent clothing appropriate to the scene, stable age and identity. "
+            "Real temporal motion, coherent physical action, continuous camera movement, no still-image pan or slideshow."
+        )
+        if feedback.strip():
+            prompt += f" User review correction for this retry: {feedback.strip()}"
+        negative = ", ".join(
+            item
+            for item in (
+                str(scene.get("negativePrompt") or ""),
+                *negative_rules,
+                "nudity, exposed genitals, exposed breasts, transparent clothing, missing clothes, underwear-only, "
+                "multiple eyes, extra eyes, extra face, duplicate head, extra limbs, missing limbs, deformed hands, "
+                "wrong age, elderly appearance when not specified, child-adult age drift, identity drift, wardrobe drift, "
+                "body horror, fused people, duplicated people, random text, watermark, frozen slideshow, static Ken Burns image",
+            )
+            if item.strip()
+        )
+        return prompt[:20_000], negative[:12_000]
+
+    def _await_scene_review(self, index: int, scene: dict[str, Any], attempt: int) -> tuple[bool, str]:
+        scene_id = str(scene["id"])
+        path = _review_file(self.job_directory, scene_id)
+        path.unlink(missing_ok=True)
+        snapshot = self.status["scenes"][index]
+        snapshot["state"] = "review"
+        snapshot["progress"] = 92.0
+        snapshot["reviewState"] = "pending"
+        snapshot["generationAttempt"] = attempt
+        self.status["state"] = "awaiting-review"
+        self.status["stage"] = "review"
+        self.status["activeSceneId"] = scene_id
+        self.status["sceneProgress"] = 92.0
+        self.status["overallProgress"] = min(92.0, 10.0 + ((index + 0.92) / len(self.scenes)) * 82.0)
+        self.status["message"] = "影片模型鏡頭已完成。請檢查人物、年齡、服裝、人體與動作後核准或退回。"
+        self._write()
+        last_heartbeat = time.monotonic()
+        while True:
+            self.checkpoint()
+            if path.is_file():
                 try:
-                    cache_key = ai_image_cache_key(request, self.image_capability)
-                except (OSError, ValueError) as error:
-                    raise RenderError("AI_CACHE_KEY_FAILED", "無法驗證角色資產快取來源。", str(error)) from error
-                reused = self.image_cache.restore(cache_key, destination, (request.width, request.height))
-                if not reused:
-                    try:
-                        generated = self.image_provider.generate(request, destination)
-                    except ImageProviderError as error:
-                        raise RenderError(
-                            "CHARACTER_ASSET_FAILED",
-                            f"無法建立角色「{snapshot['name']}」的身份參考資產：{error.message}",
-                            error.detail,
-                        ) from error
-                    if not _valid_reference_asset(generated.path, (request.width, request.height)):
-                        raise RenderError("CHARACTER_ASSET_INVALID", f"角色「{snapshot['name']}」的參考資產無法驗證。")
-                    self.image_cache.commit(cache_key, destination, (request.width, request.height))
-                    generated_count += 1
-                    generated_now = True
-            character["referenceImagePath"] = str(destination.resolve())
-            character["consistencyStrength"] = max(0.85, min(1.0, float(character.get("consistencyStrength", 0.9))))
-            snapshot["previewPath"] = str(destination.resolve())
+                    review = _read_json(path, 64 * 1024)
+                except (OSError, json.JSONDecodeError, RenderError):
+                    path.unlink(missing_ok=True)
+                    continue
+                if (
+                    isinstance(review, dict)
+                    and review.get("jobId") == self.job_id
+                    and review.get("sceneId") == scene_id
+                    and isinstance(review.get("approved"), bool)
+                ):
+                    path.unlink(missing_ok=True)
+                    approved = bool(review["approved"])
+                    feedback = str(review.get("feedback") or "").strip()[:4000]
+                    snapshot["reviewState"] = "approved" if approved else "rejected"
+                    snapshot["reviewFeedback"] = feedback
+                    for check in snapshot.get("qualityChecks", []):
+                        if isinstance(check, dict) and check.get("id") == "human-review":
+                            check["state"] = "passed" if approved else "failed"
+                            check["detail"] = "使用者已核准此鏡頭。" if approved else f"使用者退回：{feedback}"
+                    self.status["state"] = "running"
+                    self.status["stage"] = "review"
+                    self.status["message"] = "鏡頭已核准。" if approved else "鏡頭已退回，準備依意見重新生成。"
+                    self._write()
+                    return approved, feedback
+            if time.monotonic() - last_heartbeat >= 2.0:
+                self._write()
+                last_heartbeat = time.monotonic()
+            time.sleep(0.25)
+
+    def _run_ai_video(self) -> dict[str, Any]:
+        if self.video_provider_error is not None:
+            raise RenderError(
+                self.video_provider_error.code,
+                self.video_provider_error.message,
+                self.video_provider_error.detail,
+            )
+        if self.video_provider is None:
+            raise RenderError("VIDEO_PROVIDER_NOT_CONFIGURED", "AI 影片模式已選取，但影片模型服務尚未完成設定。")
+        if self.lip_sync_requested:
+            raise RenderError(
+                "LIPSYNC_NOT_IMPLEMENTED_FOR_VIDEO",
+                "AI 影片模式目前尚未支援經驗證的本機口型同步。請關閉口型同步後再生成。",
+            )
+        self.video_provider.probe()
+        settings = self.project.get("settings") if isinstance(self.project.get("settings"), dict) else {}
+        max_attempts = max(1, min(5, int(settings.get("maxShotRetries", 3))))
+        clips: list[Path] = []
+        voiced_scenes = 0
+        dialogue_scenes = 0
+        for index, scene in enumerate(self.scenes):
+            scene_number = int(scene["_evolabsSceneNumber"])
+            scene_root = self.work_directory / f"scene-{scene_number:03d}"
+            scene_root.mkdir(parents=True, exist_ok=True)
+            voice = scene_root / "voice.wav"
+            speech_text = _spoken_dialogue(self.project, scene)
+            if speech_text:
+                dialogue_scenes += 1
+            voice_profile = _scene_voice_profile(self.project, scene)
+            has_voice = self.info.chinese_voice_available and _try_windows_tts(speech_text, voice, scene_root, voice_profile)
+            if has_voice:
+                voiced_scenes += 1
+            voice_path = voice if has_voice else None
+            duration = float(scene["duration"])
+            if voice_path:
+                duration = min(30.0, max(duration, _wave_duration(voice_path) + 0.35))
+            feedback = str(scene.get("reviewFeedback") or "")
+            approved_clip: Path | None = None
+            for attempt in range(1, max_attempts + 1):
+                self.checkpoint()
+                self._progress(index, 8.0, "motion", f"第 {scene_number} 鏡：影片模型生成中（第 {attempt}/{max_attempts} 次）")
+                prompt, negative = self._scene_video_prompt(scene, feedback)
+                final_width, final_height = self.size
+                if final_width >= final_height:
+                    generation_width, generation_height = (512, 288)
+                elif final_width < final_height:
+                    generation_width, generation_height = (288, 512)
+                else:
+                    generation_width, generation_height = (384, 384)
+                fps = 16
+                frames = max(17, min(129, int(round(duration * fps)) + 1))
+                seed = int(scene.get("seed") or (int(hashlib.blake2b(f"{self.project['id']}:{scene['id']}:{attempt}".encode(), digest_size=8).hexdigest(), 16) % 2_147_483_647))
+                raw_target = scene_root / f"raw-attempt-{attempt}.mp4"
+                request = VideoGenerationRequest(
+                    prompt=prompt,
+                    negative_prompt=negative,
+                    seed=seed,
+                    width=generation_width,
+                    height=generation_height,
+                    frames=frames,
+                    fps=fps,
+                    output_prefix=f"evolabs/{self.job_id}/scene-{scene_number:03d}-attempt-{attempt}",
+                    input_image=self._scene_reference_image(scene),
+                )
+                try:
+                    generated: GeneratedVideo = self.video_provider.generate(request, raw_target)
+                except VideoProviderError as error:
+                    if error.code == "VIDEO_GENERATION_CANCELED":
+                        raise RenderCanceled() from error
+                    raise RenderError(error.code, error.message, error.detail) from error
+                self._progress(index, 68.0, "compose", f"第 {scene_number} 鏡：整理影片、配音與字幕")
+                overlay = _render_video_overlay(scene, self.size, self.info.font, self.captions, scene_root / "overlay.png")
+                normalized = self.shots_directory / f"scene-{scene_number:03d}-attempt-{attempt}.mp4"
+                _encode_video_scene(
+                    self.info.ffmpeg,
+                    generated.path,
+                    overlay,
+                    voice_path,
+                    normalized,
+                    duration,
+                    self.size,
+                    self.quality,
+                    fps=24,
+                )
+                checks, deterministic_ok = _video_quality_checks(self.info.ffmpeg, normalized, duration)
+                preview = self.previews_directory / f"scene-{scene_number:03d}-attempt-{attempt}.mp4"
+                shutil.copyfile(normalized, preview)
+                snapshot = self.status["scenes"][index]
+                snapshot.update({
+                    "visualSource": "video",
+                    "previewPath": str(preview.resolve()),
+                    "providerId": generated.provider_id,
+                    "modelName": ", ".join(generated.model_names) or generated.workflow_name,
+                    "promptId": generated.prompt_id,
+                    "seed": generated.seed,
+                    "generationAttempt": attempt,
+                    "qualityChecks": checks,
+                    "reviewState": "pending",
+                })
+                self._write()
+                if not deterministic_ok:
+                    feedback = "自動品質檢查失敗：" + "；".join(
+                        str(check.get("detail") or "")
+                        for check in checks
+                        if isinstance(check, dict) and check.get("state") == "failed"
+                    )
+                    snapshot["reviewState"] = "rejected"
+                    snapshot["reviewFeedback"] = feedback
+                    if attempt >= max_attempts:
+                        raise RenderError("VIDEO_QUALITY_FAILED", "影片鏡頭多次未通過基本品質檢查。", feedback)
+                    continue
+                approved, feedback = self._await_scene_review(index, scene, attempt)
+                if approved:
+                    approved_clip = normalized
+                    break
+                if attempt >= max_attempts:
+                    raise RenderError("VIDEO_REVIEW_REJECTED", "影片鏡頭已達重試上限，仍未獲核准。", feedback)
+            if approved_clip is None:
+                raise RenderError("VIDEO_SCENE_NOT_APPROVED", "影片鏡頭尚未獲核准，不能進入最終成片。")
+            snapshot = self.status["scenes"][index]
             snapshot["state"] = "done"
             snapshot["progress"] = 100.0
-            snapshot["generated"] = generated_now
-            snapshot["cacheHit"] = reused
-            snapshot["seed"] = request.seed
-            self.status["overallProgress"] = min(9.5, ((index + 1) / max(1, len(characters))) * 9.5)
+            snapshot["reviewState"] = "approved"
+            clips.append(approved_clip)
             self._write()
-        return generated_count
+
+        self.checkpoint()
+        self.status["state"] = "running"
+        self.status["stage"] = "compose"
+        self.status["activeSceneId"] = None
+        self.status["sceneProgress"] = 100.0
+        self.status["overallProgress"] = 95.0
+        self.status["message"] = "所有影片模型鏡頭已核准，正在合併並驗證最終 MP4。"
+        self._write()
+        output = self.output_directory / _safe_output_name(self.project.get("title"), self.job_id)
+        _concat_scenes(self.info.ffmpeg, clips, output, self.work_directory)
+        self.status["state"] = "completed"
+        self.status["stage"] = "complete"
+        self.status["overallProgress"] = 100.0
+        self.status["sceneProgress"] = 100.0
+        self.status["activeSceneId"] = None
+        self.status["outputPath"] = str(output.resolve())
+        self.status["outputBytes"] = output.stat().st_size
+        self.status["message"] = (
+            f"{len(clips)} 個鏡頭已由真正的 ComfyUI 影片工作流生成並逐鏡人工核准。"
+            + _completion_message(dialogue_scenes, voiced_scenes, self.captions)
+        )
+        self._write()
+        return self.status
+
+    def _run_motion_comic(self) -> dict[str, Any]:
+        if self.lip_sync_requested and self.lip_sync_error:
+            raise RenderError(
+                self.lip_sync_error.code,
+                self.lip_sync_error.message,
+                self.lip_sync_error.detail,
+            )
+        clips: list[Path] = []
+        voiced_scenes = 0
+        dialogue_scenes = 0
+        lip_synced_scenes = 0
+        lip_sync_skipped_scenes = 0
+        for index, scene in enumerate(self.scenes):
+            self.checkpoint()
+            scene_number = int(scene["_evolabsSceneNumber"])
+            scene_root = self.work_directory / f"scene-{scene_number:03d}"
+            scene_root.mkdir(parents=True, exist_ok=True)
+            card = scene_root / "card.png"
+            voice = scene_root / "voice.wav"
+            clip = self.shots_directory / f"scene-{scene_number:03d}.mp4"
+
+            self._progress(index, 8, "visual", f"第 {scene_number} / {len(self.scenes)} 鏡：製作動態漫畫分鏡卡")
+            _render_card(self.project, scene, scene_number, self.size, card, self.info.font, self.captions)
+            snapshot = self.status["scenes"][index]
+            snapshot["visualSource"] = "motion-comic"
+            preview = self.previews_directory / _safe_scene_preview_name(scene["id"], scene_number - 1)
+            _persist_scene_preview(card, preview)
+            snapshot["previewPath"] = str(preview.resolve())
+            self._write()
+
+            self._progress(index, 32, "voice", f"第 {scene_number} / {len(self.scenes)} 鏡：加入語音與字幕")
+            speech_text = _spoken_dialogue(self.project, scene)
+            if speech_text:
+                dialogue_scenes += 1
+            voice_profile = _scene_voice_profile(self.project, scene)
+            snapshot["voiceProfile"] = voice_profile
+            has_voice = self.info.chinese_voice_available and _try_windows_tts(
+                speech_text, voice, scene_root, voice_profile
+            )
+            if has_voice:
+                voiced_scenes += 1
+            voice_path = voice if has_voice else None
+            duration = float(scene["duration"])
+            if voice_path:
+                duration = min(30.0, max(duration, _wave_duration(voice_path) + 0.35))
+            self.checkpoint()
+
+            self._progress(index, 58, "motion", f"第 {scene_number} / {len(self.scenes)} 鏡：合成動態漫畫鏡頭")
+            _encode_scene(
+                self.info.ffmpeg,
+                card,
+                voice_path,
+                clip,
+                duration,
+                self.size,
+                self.quality,
+                scene.get("shot", "中景・固定鏡頭"),
+                fps=25 if self.lip_sync_requested else 24,
+            )
+            final_clip = clip
+            if self.lip_sync_requested:
+                if voice_path and len(scene.get("characterIds", [])) == 1:
+                    self._progress(index, 82, "motion", f"第 {scene_number} / {len(self.scenes)} 鏡：製作單人對嘴")
+                    lip_synced_clip = self.shots_directory / f"scene-{scene_number:03d}-lipsync.mp4"
+                    try:
+                        assert self.lip_sync_provider is not None
+                        result = self.lip_sync_provider.generate(
+                            LipSyncRequest(
+                                source_video=clip,
+                                audio=voice_path,
+                                duration_seconds=duration,
+                                subject_count=1,
+                                fps=25,
+                            ),
+                            lip_synced_clip,
+                        )
+                    except LipSyncProviderError as error:
+                        if error.code == "LIPSYNC_CANCELED":
+                            raise RenderCanceled() from error
+                        raise RenderError(error.code, error.message, error.detail) from error
+                    final_clip = result.path
+                    lip_synced_scenes += 1
+                    snapshot["lipSynced"] = True
+                else:
+                    lip_sync_skipped_scenes += 1
+                    snapshot["lipSynced"] = False
+                    snapshot["lipSyncSkippedReason"] = (
+                        "voice_unavailable" if not voice_path else "single_subject_only"
+                    )
+            self._progress(index, 100, "compose", f"第 {scene_number} / {len(self.scenes)} 鏡已完成")
+            snapshot["state"] = "done"
+            snapshot["progress"] = 100.0
+            clips.append(final_clip)
+            self._write()
+
+        self.checkpoint()
+        self.status["state"] = "running"
+        self.status["stage"] = "compose"
+        self.status["activeSceneId"] = None
+        self.status["sceneProgress"] = 100.0
+        self.status["overallProgress"] = 95.0
+        self.status["message"] = "正在合併並驗證動態漫畫 MP4。"
+        self._write()
+        output = self.output_directory / _safe_output_name(self.project.get("title"), self.job_id)
+        _concat_scenes(self.info.ffmpeg, clips, output, self.work_directory)
+
+        self.status["state"] = "completed"
+        self.status["stage"] = "complete"
+        self.status["overallProgress"] = 100.0
+        self.status["sceneProgress"] = 100.0
+        self.status["activeSceneId"] = None
+        self.status["outputPath"] = str(output.resolve())
+        self.status["outputBytes"] = output.stat().st_size
+        completion = "動態漫畫模式已使用分鏡卡、鏡頭運動、語音與字幕完成；本模式不是 AI 影片模型生成。"
+        completion += _completion_message(dialogue_scenes, voiced_scenes, self.captions)
+        if self.lip_sync_requested:
+            completion = (
+                f"{lip_synced_scenes} 鏡已完成本機單人對嘴"
+                + (f"，{lip_sync_skipped_scenes} 鏡因沒有可用語音或不是單人鏡頭而略過" if lip_sync_skipped_scenes else "")
+                + f"。{completion}"
+            )
+        self.status["message"] = completion
+        self._write()
+        return self.status
 
     def run(self) -> dict[str, Any]:
         self.job_directory.mkdir(parents=True, exist_ok=True)
@@ -1630,198 +2163,13 @@ class RenderJob:
         self.shots_directory.mkdir(parents=True, exist_ok=True)
         self.output_directory.mkdir(parents=True, exist_ok=True)
         self._write()
-        clips: list[Path] = []
-        voiced_scenes = 0
-        dialogue_scenes = 0
-        ai_scenes = 0
-        reference_conditioned_scenes = 0
-        cached_ai_scenes = 0
-        lip_synced_scenes = 0
-        lip_sync_skipped_scenes = 0
-        generated_character_assets = 0
         try:
-            if self.visual_mode == "ai-images" and self.image_provider_error:
-                raise RenderError(
-                    self.image_provider_error.code,
-                    self.image_provider_error.message,
-                    self.image_provider_error.detail,
-                )
-            if self.visual_mode == "ai-images" and self.image_provider is None:
-                raise RenderError("AI_IMAGE_UNAVAILABLE", "AI 圖片模式已選取，但本機圖片引擎尚未就緒。")
-            if self.lip_sync_requested and self.lip_sync_error:
-                raise RenderError(
-                    self.lip_sync_error.code,
-                    self.lip_sync_error.message,
-                    self.lip_sync_error.detail,
-                )
-            generated_character_assets = self._prepare_character_assets()
-            for index, scene in enumerate(self.scenes):
-                self.checkpoint()
-                scene_number = int(scene["_evolabsSceneNumber"])
-                scene_root = self.work_directory / f"scene-{scene_number:03d}"
-                scene_root.mkdir(parents=True, exist_ok=True)
-                card = scene_root / "card.png"
-                ai_source = scene_root / "ai-source.png"
-                voice = scene_root / "voice.wav"
-                clip = self.shots_directory / f"scene-{scene_number:03d}.mp4"
-
-                if self.visual_mode == "ai-images":
-                    self._progress(index, 8, "visual", f"第 {scene_number} / {len(self.project['scenes'])} 鏡：本機 AI 正在生成畫面")
-                    request = _scene_ai_request(
-                        self.project,
-                        scene,
-                        scene_number,
-                        self.work_directory / "ref",
-                        allow_reference=bool(self.image_capability and self.image_capability.reference_conditioning),
-                    )
-                    assert self.image_capability is not None
-                    try:
-                        cache_key = ai_image_cache_key(request, self.image_capability)
-                    except (OSError, ValueError) as error:
-                        raise RenderError("AI_CACHE_KEY_FAILED", "無法驗證 AI 圖片快取來源。", str(error)) from error
-                    cache_hit = self.image_cache.restore(cache_key, ai_source, (request.width, request.height))
-                    if cache_hit:
-                        generated = GeneratedImage(
-                            ai_source,
-                            self.image_capability.provider_id,
-                            self.image_capability.model_name,
-                            request.seed,
-                            bool(request.reference_image and self.image_capability.reference_conditioning),
-                        )
-                        cached_ai_scenes += 1
-                    else:
-                        try:
-                            assert self.image_provider is not None
-                            generated = self.image_provider.generate(request, ai_source)
-                        except ImageProviderError as error:
-                            raise RenderError(error.code, error.message, error.detail) from error
-                        self.image_cache.commit(cache_key, ai_source, (request.width, request.height))
-                    _render_ai_card(ai_source, scene, scene_number, self.size, card, self.info.font, self.captions)
-                    ai_scenes += 1
-                    if generated.reference_conditioned:
-                        reference_conditioned_scenes += 1
-                    snapshot = self.status["scenes"][index]
-                    snapshot["visualSource"] = "ai"
-                    snapshot["aiProvider"] = generated.provider_id
-                    snapshot["modelName"] = generated.model_name
-                    snapshot["seed"] = generated.seed
-                    snapshot["referenceConditioned"] = generated.reference_conditioned
-                    snapshot["cacheHit"] = cache_hit
-                else:
-                    self._progress(index, 8, "visual", f"第 {scene_number} / {len(self.project['scenes'])} 鏡：製作分鏡卡")
-                    _render_card(self.project, scene, scene_number, self.size, card, self.info.font, self.captions)
-                    self.status["scenes"][index]["visualSource"] = "card"
-                preview = self.previews_directory / _safe_scene_preview_name(scene["id"], scene_number - 1)
-                _persist_scene_preview(card, preview)
-                self.status["scenes"][index]["previewPath"] = str(preview.resolve())
-                self._write()
-                self._progress(index, 32, "voice", f"第 {scene_number} / {len(self.project['scenes'])} 鏡：加入語音與字幕")
-                dialogue = str(scene.get("dialogue", ""))
-                speech_text = _spoken_dialogue(self.project, scene)
-                if speech_text:
-                    dialogue_scenes += 1
-                voice_profile = _scene_voice_profile(self.project, scene)
-                self.status["scenes"][index]["voiceProfile"] = voice_profile
-                has_voice = self.info.chinese_voice_available and _try_windows_tts(
-                    speech_text, voice, scene_root, voice_profile
-                )
-                if has_voice:
-                    voiced_scenes += 1
-                voice_path = voice if has_voice else None
-                duration = float(scene["duration"])
-                if voice_path:
-                    duration = min(30.0, max(duration, _wave_duration(voice_path) + 0.35))
-                self.checkpoint()
-
-                self._progress(index, 58, "motion", f"第 {scene_number} / {len(self.project['scenes'])} 鏡：套用鏡頭運動")
-                _encode_scene(
-                    self.info.ffmpeg,
-                    card,
-                    voice_path,
-                    clip,
-                    duration,
-                    self.size,
-                    self.quality,
-                    scene.get("shot", "中景・固定鏡頭"),
-                    fps=25 if self.lip_sync_requested else 24,
-                )
-                final_clip = clip
-                if self.lip_sync_requested:
-                    if voice_path and len(scene.get("characterIds", [])) == 1:
-                        self._progress(index, 82, "motion", f"第 {scene_number} / {len(self.project['scenes'])} 鏡：製作單人對嘴")
-                        lip_synced_clip = self.shots_directory / f"scene-{scene_number:03d}-lipsync.mp4"
-                        try:
-                            assert self.lip_sync_provider is not None
-                            result = self.lip_sync_provider.generate(
-                                LipSyncRequest(
-                                    source_video=clip,
-                                    audio=voice_path,
-                                    duration_seconds=duration,
-                                    subject_count=1,
-                                    fps=25,
-                                ),
-                                lip_synced_clip,
-                            )
-                        except LipSyncProviderError as error:
-                            if error.code == "LIPSYNC_CANCELED":
-                                raise RenderCanceled() from error
-                            raise RenderError(error.code, error.message, error.detail) from error
-                        final_clip = result.path
-                        lip_synced_scenes += 1
-                        self.status["scenes"][index]["lipSynced"] = True
-                    else:
-                        lip_sync_skipped_scenes += 1
-                        self.status["scenes"][index]["lipSynced"] = False
-                        self.status["scenes"][index]["lipSyncSkippedReason"] = (
-                            "voice_unavailable" if not voice_path else "single_subject_only"
-                        )
-                self._progress(index, 100, "compose", f"第 {scene_number} / {len(self.project['scenes'])} 鏡已完成")
-                self.status["scenes"][index]["state"] = "done"
-                self.status["scenes"][index]["progress"] = 100.0
-                clips.append(final_clip)
-                self._write()
-
-            self.checkpoint()
-            self.status["state"] = "running"
-            self.status["stage"] = "compose"
-            self.status["activeSceneId"] = None
-            self.status["sceneProgress"] = 100.0
-            self.status["overallProgress"] = 95.0
-            self.status["message"] = "正在合併並驗證最終 MP4…"
-            self._write()
-            output = self.output_directory / _safe_output_name(self.project.get("title"), self.job_id)
-            _concat_scenes(self.info.ffmpeg, clips, output, self.work_directory)
-
-            self.status["state"] = "completed"
-            self.status["stage"] = "complete"
-            self.status["overallProgress"] = 100.0
-            self.status["sceneProgress"] = 100.0
-            self.status["activeSceneId"] = None
-            self.status["outputPath"] = str(output.resolve())
-            self.status["outputBytes"] = output.stat().st_size
-            completion = _completion_message(dialogue_scenes, voiced_scenes, self.captions)
-            if generated_character_assets:
-                completion = f"已先建立 {generated_character_assets} 個角色身份參考資產。{completion}"
-            if ai_scenes:
-                reference_note = (
-                    f"，其中 {reference_conditioned_scenes} 鏡使用角色參考圖條件"
-                    if reference_conditioned_scenes
-                    else ""
-                )
-                completion = f"{ai_scenes} 鏡畫面已由本機 AI 實際生成{reference_note}。{completion}"
-                if cached_ai_scenes:
-                    completion = f"{cached_ai_scenes} 鏡直接重用已驗證的本機 AI 快取。{completion}"
-            if self.lip_sync_requested:
-                completion = (
-                    f"{lip_synced_scenes} 鏡已完成本機單人對嘴"
-                    + (f"，{lip_sync_skipped_scenes} 鏡因沒有可用語音或不是單人鏡頭而略過" if lip_sync_skipped_scenes else "")
-                    + f"。{completion}"
-                )
-            self.status["message"] = completion
-            self._write()
+            if self.visual_mode == "ai-video":
+                return self._run_ai_video()
+            return self._run_motion_comic()
         except RenderCanceled:
             for snapshot in self.status["scenes"]:
-                if snapshot["state"] == "working":
+                if snapshot["state"] in {"working", "review"}:
                     snapshot["state"] = "queued"
             self.status["state"] = "canceled"
             self.status["activeSceneId"] = None
@@ -1851,8 +2199,8 @@ class RenderJob:
             }
             self._write()
         finally:
-            # Final MP4, status, compact per-scene previews, project snapshot and
-            # log remain; bulky sources, WAVs and per-scene MP4s do not accumulate.
+            # Final output, status, compact previews, project snapshot and logs remain.
+            # Bulky model sources, WAVs and intermediate clips are removed.
             shutil.rmtree(self.work_directory, ignore_errors=True)
         return self.status
 

@@ -1,6 +1,7 @@
 mod agent_models;
 mod commands;
 mod runtime_manager;
+mod video_providers;
 
 use tauri::Manager;
 
@@ -33,12 +34,19 @@ pub fn run() {
             commands::start_render_job,
             commands::get_render_job,
             commands::control_render_job,
+            commands::review_render_scene,
             commands::reveal_render_output,
             commands::get_agent_runtime,
             commands::run_agent_stage,
             commands::run_agent_plan,
             agent_models::get_agent_models,
+            agent_models::test_agent_model,
+            agent_models::run_agent_conversation,
+            agent_models::run_agent_stage_v3,
             agent_models::run_agent_stage_v2,
+            video_providers::get_video_provider_status,
+            video_providers::configure_comfyui_provider,
+            video_providers::clear_video_provider,
             commands::check_app_update,
             commands::install_app_update,
         ])

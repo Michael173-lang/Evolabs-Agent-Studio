@@ -1,8 +1,8 @@
 {
   "name": "evolabs",
-  "version": "0.7.0",
+  "version": "0.8.0-beta.1",
   "private": true,
-  "description": "Evolabs Agent Studio — a local-first multi-agent short-film production studio.",
+  "description": "Evolabs Agent Studio — a local-first, auditable multi-agent AI video production studio.",
   "author": "Evolabs",
   "license": "UNLICENSED",
   "type": "module",

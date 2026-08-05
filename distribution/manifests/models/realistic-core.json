@@ -5,12 +5,18 @@
   "id": "realistic-core",
   "version": "0.4.0",
   "status": "release",
-  "name": "寫實 AI 核心",
-  "description": "Evolabs 選配寫實模型包：Realistic Vision V5.1、IP-Adapter Plus 與 CLIP Vision。",
+  "name": "寫實動態漫畫參考圖模型（選配）",
+  "description": "舊版 Stable Diffusion 1.5 靜態圖片包，僅供動態漫畫或影片首幀參考素材使用；不會生成連續影片，也不是 AI 影片模式的必要元件。",
   "provider": "sd-cli",
-  "capabilities": ["realistic_image", "character_consistency"],
+  "capabilities": [
+    "realistic_image",
+    "character_consistency"
+  ],
   "hardware": {
-    "gpuNameContains": ["NVIDIA", "RTX"],
+    "gpuNameContains": [
+      "NVIDIA",
+      "RTX"
+    ],
     "minVramMb": 3500,
     "minRamMb": 11264,
     "requiresReliableVramProbe": true
