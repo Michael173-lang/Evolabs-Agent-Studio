@@ -2333,3 +2333,612 @@ input[type='range'] {
     width: auto;
   }
 }
+
+/* v0.8.0-beta.2 — auditable team conversation */
+.dialogue-layout {
+  grid-template-rows: auto minmax(320px, 1fr) auto;
+}
+
+.conversation-progress {
+  display: grid;
+  gap: 9px;
+  margin: 14px 20px 0;
+  padding: 13px 15px;
+  border: 1px solid #393833;
+  border-radius: 10px;
+  background: #141411;
+}
+
+.conversation-progress--failed {
+  border-color: #6c3b3b;
+  background: #1a1111;
+}
+
+.conversation-progress--stopping {
+  border-color: #695d38;
+  background: #18160f;
+}
+
+.conversation-progress__header,
+.composer__topline,
+.composer__actions,
+.message__meta-right {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.conversation-progress__header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.conversation-progress__header strong {
+  font-size: 13px;
+}
+
+.conversation-progress > p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.conversation-progress__meter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.conversation-progress__meter small,
+.composer__topline > small,
+.message__delivery-detail {
+  color: var(--quiet);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.message--failed {
+  border-color: #704040;
+}
+
+.message--partial {
+  border-color: #70633e;
+}
+
+.message--sending {
+  border-color: #48565a;
+}
+
+.message__failure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid #5b3535;
+  border-radius: 8px;
+  color: #e0b1b1;
+  background: #1b1111;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.button--compact {
+  min-height: 30px;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.evidence__retries {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #4d4630;
+  border-radius: 8px;
+  background: #17150f;
+}
+
+.evidence__retries strong,
+.evidence__retries li {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.composer {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+
+.composer__topline {
+  align-items: end;
+}
+
+.composer__target {
+  width: min(100%, 460px);
+}
+
+.composer__quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.composer__quick-actions button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid #353532;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #151514;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.composer__quick-actions button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #55554f;
+  background: #20201e;
+}
+
+.composer textarea {
+  min-height: 92px;
+}
+
+.composer__actions {
+  justify-content: flex-end;
+}
+
+.composer__send {
+  min-height: 38px;
+}
+
+.composer__error {
+  margin: 0;
+  color: #e7aaaa;
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .conversation-progress__meter,
+  .message__failure,
+  .composer__topline {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .composer__target {
+    width: 100%;
+  }
+
+  .composer__actions {
+    flex-wrap: wrap;
+  }
+
+  .composer__actions .button--primary {
+    flex: 1 1 100%;
+  }
+}
+
+/* v0.8.0-beta.2 — managed AI video engine and storage management */
+.model-section--managed {
+  grid-column: 1 / -1;
+}
+
+.managed-engine {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px 20px;
+}
+
+.managed-engine__summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.managed-engine__summary > div:nth-child(2) {
+  display: grid;
+  gap: 3px;
+}
+
+.managed-engine__summary strong {
+  font-size: 13px;
+}
+
+.managed-engine__summary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.managed-engine__size {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.managed-engine__size span {
+  color: var(--quiet);
+  font-size: 10px;
+}
+
+.managed-engine__size strong {
+  font-size: 18px;
+}
+
+.managed-engine__progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.managed-engine__progress small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.managed-engine__steps {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.managed-engine__steps > div {
+  min-height: 84px;
+  align-items: start;
+  border-bottom: 0;
+  border-right: 1px solid var(--border-soft);
+}
+
+.managed-engine__steps > div:last-child {
+  border-right: 0;
+}
+
+.managed-engine__actions {
+  flex-wrap: wrap;
+}
+
+.storage-section {
+  overflow: hidden;
+}
+
+.storage-section__header {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.storage-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--muted);
+}
+
+.storage-loading p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.storage-disk {
+  display: grid;
+  gap: 10px;
+  padding: 18px 20px;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  background: #0e0e0e;
+}
+
+.storage-disk__headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.storage-disk__headline > div {
+  display: grid;
+  gap: 3px;
+}
+
+.storage-disk__headline strong {
+  font-size: 13px;
+}
+
+.storage-disk__headline small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.storage-warning {
+  margin-top: 4px;
+}
+
+.storage-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 18px 20px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--border-soft);
+}
+
+.storage-summary-grid > div {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  background: #111111;
+}
+
+.storage-summary-grid span {
+  color: var(--quiet);
+  font-size: 10px;
+}
+
+.storage-summary-grid strong {
+  font-size: 17px;
+}
+
+.storage-quick-clean {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 20px 18px;
+  padding: 14px;
+  border: 1px solid #4d4630;
+  border-radius: 10px;
+  background: #17150f;
+}
+
+.storage-quick-clean > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.storage-quick-clean span {
+  display: grid;
+  gap: 2px;
+}
+
+.storage-quick-clean strong {
+  font-size: 12px;
+}
+
+.storage-quick-clean small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.storage-item-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 20px 20px;
+}
+
+.storage-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: #0e0e0e;
+}
+
+.storage-item__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #343432;
+  border-radius: 9px;
+  color: var(--muted);
+  background: #151515;
+}
+
+.storage-item__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.storage-item__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.storage-item__title strong {
+  font-size: 12px;
+}
+
+.storage-item__copy p,
+.storage-item__copy small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.storage-item__warning {
+  color: var(--warning) !important;
+}
+
+.storage-item__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1120px) {
+  .managed-engine__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .managed-engine__steps > div {
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .storage-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .managed-engine__summary,
+  .storage-item {
+    grid-template-columns: 1fr;
+  }
+
+  .managed-engine__size {
+    justify-items: start;
+  }
+
+  .managed-engine__steps,
+  .storage-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .storage-disk__headline,
+  .storage-quick-clean {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .storage-item__actions {
+    justify-content: stretch;
+  }
+
+  .storage-item__actions .button {
+    flex: 1 1 auto;
+  }
+}
+
+.message__coordination {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #32434a;
+  border-radius: 8px;
+  background: #10181b;
+}
+
+.message__coordination > strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #b9ced5;
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+
+.message__coordination > span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.managed-uninstall {
+  position: relative;
+}
+
+.managed-uninstall > summary,
+.advanced-provider > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #131313;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.managed-uninstall > summary::-webkit-details-marker,
+.advanced-provider > summary::-webkit-details-marker {
+  display: none;
+}
+
+.managed-uninstall__menu {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 220px;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #161616;
+  box-shadow: var(--shadow);
+}
+
+.advanced-provider {
+  margin: 0 20px 20px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: #0d0d0d;
+}
+
+.advanced-provider > summary {
+  display: flex;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  padding-inline: 14px;
+}
+
+.advanced-provider[open] > summary {
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 9px 9px 0 0;
+}
+
+.advanced-provider .provider-config {
+  border: 0;
+  border-radius: 0 0 9px 9px;
+}
+
+.storage-item__path {
+  display: block;
+  max-width: 100%;
+  color: var(--quiet) !important;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+@media (max-width: 720px) {
+  .managed-uninstall {
+    width: 100%;
+  }
+
+  .managed-uninstall > summary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .managed-uninstall__menu {
+    position: static;
+    min-width: 0;
+  }
+}

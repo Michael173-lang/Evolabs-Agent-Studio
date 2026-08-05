@@ -19,7 +19,9 @@ import { agentRoster } from '../lib/agentPipeline';
 import { isVisibleDialogueMessage } from '../lib/agentConversation';
 import type {
   AgentChangeProposal,
+  AgentMessage,
   AgentId,
+  ConversationProgress,
   ConversationTarget,
   EvolabsProject,
   RenderControlAction,
@@ -39,6 +41,9 @@ interface ProductionViewProps {
   renderBlockedReason?: string;
   onSelectTarget: (target: ConversationTarget) => void;
   onSendMessage: (target: ConversationTarget, message: string) => Promise<void>;
+  onRetryMessage: (messageId: string) => Promise<void>;
+  onStopConversation: () => void;
+  conversationProgress: ConversationProgress;
   onRunTeam: () => void;
   onStartRender: () => void;
   onControlRender: (action: RenderControlAction) => void;
@@ -86,7 +91,7 @@ const reviewChecklistItems = [
   { id: 'identity', label: '人物年齡、身份與服裝符合角色設定' },
   { id: 'anatomy', label: '沒有多眼、多臉、額外肢體、畸形手腳或裸露' },
   { id: 'continuity', label: '角色外觀、場景與關鍵道具在鏡頭內保持一致' },
-  { id: 'motion', label: '人物與鏡頭具有真正連續動作，不是靜態畫面推拉' },
+  { id: 'motion', label: '人物與鏡頭具有連續動作，且不是靜態畫面推拉' },
   { id: 'story', label: '動作、情緒與對白符合此鏡頭的敘事目的' },
 ] as const;
 
@@ -167,6 +172,9 @@ export default function ProductionView({
   renderBlockedReason,
   onSelectTarget,
   onSendMessage,
+  onRetryMessage,
+  onStopConversation,
+  conversationProgress,
   onRunTeam,
   onStartRender,
   onControlRender,
@@ -182,6 +190,8 @@ export default function ProductionView({
   const [message, setMessage] = useState('');
   const [reviewFeedback, setReviewFeedback] = useState('');
   const [sending, setSending] = useState(false);
+  const [composerError, setComposerError] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [reviewing, setReviewing] = useState(false);
   const [referenceBusyId, setReferenceBusyId] = useState('');
   const [referenceError, setReferenceError] = useState('');
@@ -214,6 +224,18 @@ export default function ProductionView({
     setReviewChecks({ identity: false, anatomy: false, continuity: false, motion: false, story: false });
     setReviewFeedback('');
   }, [activeReview?.sceneId, activeReview?.generationAttempt]);
+
+  useEffect(() => {
+    if (!conversationProgress.active || !conversationProgress.startedAt) {
+      setElapsedSeconds(0);
+      return undefined;
+    }
+    const started = Date.parse(conversationProgress.startedAt);
+    const update = () => setElapsedSeconds(Math.max(0, Math.round((Date.now() - started) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [conversationProgress.active, conversationProgress.startedAt]);
   const completedTasks = tasks.filter((task) => task.state === 'done').length;
   const taskProgress = tasks.length ? tasks.reduce((sum, task) => sum + task.progress, 0) / tasks.length : 0;
   const tabs: Array<{ id: ProductionTab; label: string; count?: number }> = [
@@ -224,7 +246,7 @@ export default function ProductionView({
   ];
 
   const targetOptions = useMemo(() => [
-    { id: 'production-meeting' as const, label: '製作會議', detail: '八位 AI 製片成員依序提供真實模型回覆' },
+    { id: 'production-meeting' as const, label: '製作會議', detail: '八位 AI 製片成員依序閱讀前序意見並完成專業回覆' },
     ...agentRoster.map((agent) => ({ id: agent.id, label: agent.name, detail: agent.title })),
   ], []);
 
@@ -263,15 +285,40 @@ export default function ProductionView({
   const send = async () => {
     const trimmed = message.trim();
     if (!trimmed || sending || busy) return;
+    setComposerError('');
+    setMessage('');
+    setTab('dialogue');
     setSending(true);
     try {
       await onSendMessage(selectedTarget, trimmed);
-      setMessage('');
-      setTab('dialogue');
+    } catch (error) {
+      setComposerError(error instanceof Error
+        ? `${error.message} 可在上方訊息卡片直接重試。`
+        : '訊息未完成，可在上方訊息卡片直接重試。');
     } finally {
       setSending(false);
     }
   };
+
+  const retryDialogueMessage = async (entry: AgentMessage) => {
+    if (busy || sending) return;
+    setComposerError('');
+    setSending(true);
+    try {
+      await onRetryMessage(entry.id);
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : '重試未完成。');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const quickActions = [
+    '請總導演整合目前所有成員的意見，列出一致結論與待決事項。',
+    '請製片團隊協作補齊目前缺少的資料；只有必須由我決定的事項才詢問我。',
+    '列出目前阻塞製作的項目、負責成員與下一步。',
+    '根據目前對話提出一份可預覽、可選擇套用的修改提案。',
+  ];
 
   const review = async (approved: boolean) => {
     if (!activeReview || reviewing) return;
@@ -394,7 +441,7 @@ export default function ProductionView({
           <div className="panel__header panel__header--compact">
             <div>
               <span className="eyebrow">AI 製片團隊</span>
-              <h2>真實執行狀態</h2>
+              <h2>執行狀態</h2>
             </div>
           </div>
           <div className="task-list">
@@ -423,68 +470,146 @@ export default function ProductionView({
 
           {tab === 'dialogue' && (
             <div className="dialogue-layout">
+              {(conversationProgress.active || conversationProgress.phase === 'failed' || conversationProgress.phase === 'stopping') && (
+                <section className={`conversation-progress conversation-progress--${conversationProgress.phase}`} aria-live="polite">
+                  <div className="conversation-progress__header">
+                    <div>
+                      <span className="eyebrow">對話執行狀態</span>
+                      <strong>{conversationProgress.currentAgentId ? agentLabel(conversationProgress.currentAgentId) : conversationProgress.target === 'production-meeting' ? '製作會議' : 'AI 製片成員'}</strong>
+                    </div>
+                    <StatusPill tone={conversationProgress.phase === 'failed' ? 'danger' : conversationProgress.phase === 'stopping' ? 'warning' : 'working'}>
+                      {conversationProgress.phase === 'failed' ? '未完成' : conversationProgress.phase === 'stopping' ? '正在停止' : '處理中'}
+                    </StatusPill>
+                  </div>
+                  <p>{conversationProgress.detail}</p>
+                  <div className="conversation-progress__meter">
+                    <ProgressBar value={conversationProgress.total
+                      ? Math.min(96, ((conversationProgress.currentIndex + (conversationProgress.phase === 'validating' ? 0.75 : 0.25)) / conversationProgress.total) * 100)
+                      : 4} />
+                    <small>
+                      {conversationProgress.total ? `${Math.min(conversationProgress.currentIndex + 1, conversationProgress.total)} / ${conversationProgress.total} 位成員` : '準備中'}
+                      {conversationProgress.active ? ` · ${elapsedSeconds} 秒` : ''}
+                    </small>
+                  </div>
+                </section>
+              )}
               <div className="dialogue-list" aria-live="polite">
                 {!dialogue.length && (
                   <EmptyState
                     title="尚無 AI 回覆"
-                    description="對話區只會顯示你送出的訊息與模型真正回傳的最終回答；系統進度不會冒充 Agent 說話。"
+                    description="對話區只顯示你送出的訊息與模型回覆；執行進度與錯誤會顯示在獨立狀態區。"
                   />
                 )}
-                {dialogue.map((entry) => (
-                  <article className={`message message--${entry.kind}`} key={entry.id}>
-                    <div className="message__meta">
-                      <strong>{entry.kind === 'user' ? '你' : agentLabel(entry.agentId)}</strong>
-                      <time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
-                    </div>
-                    <p>{entry.text}</p>
-                    {entry.evidence && (
-                      <details className="evidence">
-                        <summary>模型執行證據</summary>
-                        <dl>
-                          <div><dt>模型</dt><dd>{entry.evidence.modelId}</dd></div>
-                          <div><dt>要求識別碼</dt><dd>{entry.evidence.requestId}</dd></div>
-                          <div><dt>延遲</dt><dd>{(entry.evidence.latencyMs / 1000).toFixed(1)} 秒</dd></div>
-                          <div><dt>結構驗證</dt><dd>{entry.evidence.schemaValid ? '通過' : '失敗'}</dd></div>
-                          {entry.evidence.usage?.totalTokens && <div><dt>模型用量</dt><dd>{entry.evidence.usage.totalTokens.toLocaleString()} 個 Token</dd></div>}
-                        </dl>
-                        {entry.evidence.acknowledgement && (
-                          <div className="acknowledgement">
-                            <strong>任務確認</strong>
-                            <p>{entry.evidence.acknowledgement.objective}</p>
-                            {!!entry.evidence.acknowledgement.missingInformation.length && (
-                              <ul>{entry.evidence.acknowledgement.missingInformation.map((item) => <li key={item}>{item}</li>)}</ul>
-                            )}
-                          </div>
-                        )}
-                      </details>
-                    )}
-                  </article>
-                ))}
+                {dialogue.map((entry) => {
+                  const delivery = entry.kind === 'user' ? entry.deliveryState ?? 'sent' : undefined;
+                  return (
+                    <article className={`message message--${entry.kind}${delivery ? ` message--${delivery}` : ''}`} key={entry.id}>
+                      <div className="message__meta">
+                        <strong>{entry.kind === 'user' ? '你' : agentLabel(entry.agentId)}</strong>
+                        <div className="message__meta-right">
+                          {delivery && <StatusPill tone={delivery === 'failed' ? 'danger' : delivery === 'partial' ? 'warning' : delivery === 'sending' ? 'working' : 'good'}>
+                            {delivery === 'failed' ? '未完成' : delivery === 'partial' ? '部分完成' : delivery === 'sending' ? '處理中' : '已完成'}
+                          </StatusPill>}
+                          <time>{new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+                        </div>
+                      </div>
+                      <p>{entry.text}</p>
+                      {entry.kind === 'assistant' && entry.coordinationRequests?.length ? (
+                        <div className="message__coordination">
+                          <strong><Users size={14} /> 團隊協作</strong>
+                          {entry.coordinationRequests.map((request, index) => (
+                            <span key={`${request.toAgentId}-${index}`}>
+                              已請{agentLabel(request.toAgentId)}：{request.request}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {entry.kind === 'user' && entry.completedAgentIds?.length ? (
+                        <small className="message__delivery-detail">已收到 {entry.completedAgentIds.length} 位成員回覆{entry.attempt && entry.attempt > 1 ? ` · 第 ${entry.attempt} 次嘗試` : ''}</small>
+                      ) : null}
+                      {entry.kind === 'user' && entry.failure && (
+                        <div className="message__failure">
+                          <span>{entry.failure}</span>
+                          <button className="button button--secondary button--compact" type="button" disabled={busy || sending} onClick={() => void retryDialogueMessage(entry)}>
+                            <RefreshCw size={14} /> 重試
+                          </button>
+                        </div>
+                      )}
+                      {entry.evidence && (
+                        <details className="evidence">
+                          <summary>模型執行紀錄</summary>
+                          <dl>
+                            <div><dt>模型</dt><dd>{entry.evidence.modelId}</dd></div>
+                            <div><dt>要求識別碼</dt><dd>{entry.evidence.requestId}</dd></div>
+                            <div><dt>延遲</dt><dd>{(entry.evidence.latencyMs / 1000).toFixed(1)} 秒</dd></div>
+                            <div><dt>結構驗證</dt><dd>{entry.evidence.schemaValid ? '通過' : '失敗'}</dd></div>
+                            {entry.evidence.usage?.totalTokens && <div><dt>模型用量</dt><dd>{entry.evidence.usage.totalTokens.toLocaleString()} 個 Token</dd></div>}
+                            {!!entry.evidence.retryCount && <div><dt>自動重試</dt><dd>{entry.evidence.retryCount} 次</dd></div>}
+                          </dl>
+                          {!!entry.evidence.retryReasons?.length && (
+                            <div className="evidence__retries"><strong>重試原因</strong><ul>{entry.evidence.retryReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>
+                          )}
+                          {entry.evidence.acknowledgement && (
+                            <div className="acknowledgement">
+                              <strong>任務確認</strong>
+                              <p>{entry.evidence.acknowledgement.objective}</p>
+                              {!!entry.evidence.acknowledgement.missingInformation.length && (
+                                <ul>{entry.evidence.acknowledgement.missingInformation.map((item) => <li key={item}>{item}</li>)}</ul>
+                              )}
+                            </div>
+                          )}
+                        </details>
+                      )}
+                    </article>
+                  );
+                })}
                 {proposals.filter((proposal) => proposal.status === 'pending' && visibleProposalIds.has(proposal.id)).map((proposal) => (
                   <ProposalCard key={proposal.id} proposal={proposal} onApply={() => onApplyProposal(proposal.id)} onReject={() => onRejectProposal(proposal.id)} />
                 ))}
               </div>
               <div className="composer">
-                <label className="field composer__target">
-                  <span>交談對象</span>
-                  <select value={selectedTarget} onChange={(event: ChangeEvent<HTMLSelectElement>) => onSelectTarget(event.target.value as ConversationTarget)}>
-                    {targetOptions.map((target) => <option key={target.id} value={target.id}>{target.label} — {target.detail}</option>)}
-                  </select>
-                </label>
+                <div className="composer__topline">
+                  <label className="field composer__target">
+                    <span>交談對象</span>
+                    <select disabled={conversationProgress.active} value={selectedTarget} onChange={(event: ChangeEvent<HTMLSelectElement>) => onSelectTarget(event.target.value as ConversationTarget)}>
+                      {targetOptions.map((target) => <option key={target.id} value={target.id}>{target.label} — {target.detail}</option>)}
+                    </select>
+                  </label>
+                  <small>{message.length.toLocaleString()} / 12,000</small>
+                </div>
+                <div className="composer__quick-actions" aria-label="常用指示">
+                  {quickActions.map((action, index) => (
+                    <button key={action} type="button" disabled={sending || busy} onClick={() => setMessage(action)}>
+                      {index === 0 ? '總導演統整' : index === 1 ? '團隊補齊' : index === 2 ? '列出阻塞' : '建立修改提案'}
+                    </button>
+                  ))}
+                </div>
                 <textarea
                   value={message}
-                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setMessage(event.target.value)}
+                  maxLength={12_000}
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => { setMessage(event.target.value); setComposerError(''); }}
                   onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
                       void send();
                     }
                   }}
-                  placeholder="提出修改、追問原因，或請 AI 製片成員更新角色、分鏡與導演要求。Enter 送出，Shift+Enter 換行。"
+                  placeholder="向單一成員提問，或召開製作會議。Enter 送出，Shift+Enter 換行。"
                 />
-                <button className="button button--primary composer__send" type="button" disabled={!message.trim() || sending || busy} onClick={() => void send()}>
-                  {sending ? <span className="spinner" /> : <Send size={17} />} 送出
-                </button>
+                {composerError && <p className="composer__error">{composerError}</p>}
+                <div className="composer__actions">
+                  <button className="button button--ghost" type="button" disabled={!message || sending} onClick={() => { setMessage(''); setComposerError(''); }}>
+                    <X size={15} /> 清除
+                  </button>
+                  {conversationProgress.active && (
+                    <button className="button button--secondary" type="button" onClick={onStopConversation}>
+                      <Square size={14} /> 完成目前回覆後停止
+                    </button>
+                  )}
+                  <button className="button button--primary composer__send" type="button" disabled={!message.trim() || sending || busy} onClick={() => void send()}>
+                    {sending ? <span className="spinner" /> : <Send size={17} />} 送出
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -516,7 +641,7 @@ export default function ProductionView({
                   <div>
                     <span className="eyebrow">角色身份資產</span>
                     <h3 id="reference-manager-title">角色身份參考圖</h3>
-                    <p>參考圖由你明確匯入，不會由舊版靜態圖片模型自動冒充角色身份。更換參考圖後，相關鏡頭必須重新生成並重新審核。</p>
+                    <p>參考圖由你明確匯入。更換參考圖後，相關鏡頭必須重新生成並重新審核。</p>
                   </div>
                   <StatusPill tone={referenceRequired ? 'warning' : 'neutral'}>{referenceRequired ? '目前工作流必要' : '目前工作流選用'}</StatusPill>
                 </div>
@@ -579,7 +704,7 @@ export default function ProductionView({
 
           {tab === 'shots' && (
             <div className="shot-list">
-              {!project.scenes.length && <EmptyState title="尚無影片鏡頭" description="完成 AI 分鏡設計後，這裡會顯示真正影片模型所需的提示、動作、時長與審核狀態。" />}
+              {!project.scenes.length && <EmptyState title="尚無影片鏡頭" description="完成 AI 分鏡設計後，這裡會顯示影片模型所需的提示、動作、時長與審核狀態。" />}
               {project.scenes.map((scene) => {
                 const snapshot = render?.scenes.find((candidate) => candidate.sceneId === scene.id);
                 return (

@@ -7,7 +7,7 @@ function hasReference(character: EvolabsProject['characters'][number]): boolean 
 export function getVideoPreflightIssue(project: EvolabsProject, provider: VideoProviderStatus): string | undefined {
   if (project.settings.visualMode !== 'ai-video') return undefined;
   if (!provider.available) return provider.error ?? provider.message;
-  if (!provider.capabilities.outputVideo) return '目前工作流沒有通過真正影片輸出能力驗證。';
+  if (!provider.capabilities.outputVideo) return '目前工作流尚未通過影片輸出能力驗證。';
   if (!provider.capabilities.outputPrefixBinding) return '目前工作流缺少輸出名稱綁定，無法隔離每個鏡頭與重試產物。';
   if (!provider.capabilities.textToVideo && !provider.capabilities.imageToVideo) {
     return '目前工作流沒有可用的文字轉影片或參考圖轉影片能力。';

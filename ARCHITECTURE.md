@@ -186,4 +186,4 @@ Windows CI 依序執行：
 → GitHub Prerelease + latest.json
 ```
 
-0.8.0-beta.1 只可發布為 Prerelease。升為穩定版前，必須在 Windows 實機以至少一套真正影片工作流完成多鏡頭端到端生成與人工驗收；RTX 3050 4 GB 只可標示為實驗性相容。
+0.8.0-beta.2 只可發布為 Prerelease。升為穩定版前，必須在 Windows 實機以至少一套真正影片工作流完成多鏡頭端到端生成與人工驗收；RTX 3050 4 GB 只可標示為實驗性相容。

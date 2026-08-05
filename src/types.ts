@@ -77,6 +77,12 @@ export interface AgentTaskAcknowledgement {
   missingInformation: string[];
 }
 
+export interface AgentCoordinationRequest {
+  toAgentId: AgentId;
+  request: string;
+  reason: string;
+}
+
 export interface AgentRunEvidence {
   requestId: string;
   modelId: string;
@@ -85,6 +91,10 @@ export interface AgentRunEvidence {
   usage?: AgentTokenUsage;
   schemaValid: boolean;
   acknowledgement?: AgentTaskAcknowledgement;
+  /** Number of compatibility or transient retries performed before a valid response was received. */
+  retryCount?: number;
+  /** User-safe reasons for retries. Internal prompts and chain-of-thought are never included. */
+  retryReasons?: string[];
 }
 
 export type AgentChangeOperation =
@@ -116,6 +126,8 @@ export interface AgentChangeProposal {
   createdAt: string;
 }
 
+export type AgentMessageDeliveryState = 'sending' | 'sent' | 'partial' | 'failed';
+
 export interface AgentMessage {
   id: string;
   agentId?: AgentId;
@@ -128,6 +140,25 @@ export interface AgentMessage {
   proposalId?: string;
   /** Identifies the direct Agent chat or production meeting this message belongs to. */
   conversationTarget?: ConversationTarget;
+  /** Delivery metadata is used only for user messages so failed requests can be retried safely. */
+  deliveryState?: AgentMessageDeliveryState;
+  failure?: string;
+  attempt?: number;
+  completedAgentIds?: AgentId[];
+  /** Explicit requests sent by this AI member to another member. */
+  coordinationRequests?: AgentCoordinationRequest[];
+}
+
+export interface ConversationProgress {
+  active: boolean;
+  target: ConversationTarget;
+  currentAgentId?: AgentId;
+  currentIndex: number;
+  total: number;
+  startedAt?: string;
+  messageId?: string;
+  phase: 'idle' | 'preparing' | 'requesting' | 'validating' | 'completed' | 'failed' | 'stopping';
+  detail: string;
 }
 
 export interface SystemActivityEvent {
@@ -141,6 +172,8 @@ export interface SystemActivityEvent {
   agentId?: AgentId;
   modelId?: string;
   durationMs?: number;
+  progress?: number;
+  retryable?: boolean;
 }
 
 export interface AgentCanvasNode {
@@ -528,6 +561,97 @@ export interface RenderJobSnapshot {
   error?: RenderJobError;
 }
 
+
+export type StorageItemKind =
+  | 'managed-runtime'
+  | 'video-model'
+  | 'legacy-model'
+  | 'download-cache'
+  | 'render-output'
+  | 'render-cache'
+  | 'temporary'
+  | 'reference'
+  | 'configuration';
+
+export interface StorageItem {
+  id: string;
+  name: string;
+  description: string;
+  kind: StorageItemKind;
+  path: string;
+  bytes: number;
+  fileCount: number;
+  removable: boolean;
+  active: boolean;
+  legacy: boolean;
+  version?: string;
+  modifiedAt?: string;
+  warning?: string;
+}
+
+export interface StorageOverview {
+  rootPath: string;
+  driveName: string;
+  driveTotalBytes: number;
+  driveFreeBytes: number;
+  evolabsBytes: number;
+  modelBytes: number;
+  cacheBytes: number;
+  outputBytes: number;
+  temporaryBytes: number;
+  scannedAt: string;
+  truncated: boolean;
+  items: StorageItem[];
+}
+
+export type ManagedComfyUiState =
+  | 'not-installed'
+  | 'idle'
+  | 'installing'
+  | 'starting'
+  | 'running'
+  | 'repairing'
+  | 'uninstalling'
+  | 'failed';
+
+export interface ManagedComfyUiStep {
+  id: 'system' | 'download' | 'extract' | 'launch' | 'verify';
+  title: string;
+  state: 'queued' | 'working' | 'done' | 'failed';
+  detail: string;
+}
+
+export interface ManagedComfyUiStatus {
+  installed: boolean;
+  running: boolean;
+  available: boolean;
+  state: ManagedComfyUiState;
+  progress: number;
+  message: string;
+  installPath?: string;
+  version?: string;
+  processId?: number;
+  downloadedBytes: number;
+  totalBytes: number;
+  installedBytes: number;
+  endpoint: string;
+  error?: string;
+  steps: ManagedComfyUiStep[];
+  updatedAt?: string;
+}
+
+export interface StorageActionResult {
+  ok: boolean;
+  message: string;
+  freedBytes: number;
+}
+
+export interface StorageCleanupResult {
+  message: string;
+  freedBytes: number;
+  overview: StorageOverview;
+}
+
 export interface VideoProviderCapabilities {
   textToVideo: boolean;
   imageToVideo: boolean;
@@ -591,6 +715,7 @@ export interface AgentConversationResponse {
   assistantReply: string;
   acknowledgement: AgentTaskAcknowledgement;
   proposal?: Omit<AgentChangeProposal, 'id' | 'agentId' | 'status' | 'createdAt'>;
+  coordinationRequests?: AgentCoordinationRequest[];
   evidence: AgentRunEvidence;
 }
 

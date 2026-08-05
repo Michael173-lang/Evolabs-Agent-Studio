@@ -85,6 +85,11 @@ def main() -> int:
     require(f"Agent Studio {version}" in read_text("src/studio/ui.tsx"), "工作室品牌版本不一致。")
     require(f"currentVersion: '{version}'" in read_text("src/StudioApp.tsx"), "應用程式目前版本不一致。")
     require(f"runtimeVersion: '{version}-preview'" in read_text("src/lib/bridge.ts"), "瀏覽器預覽版本不一致。")
+    local_builder = read_text("scripts/build-windows.ps1")
+    local_publisher = read_text("scripts/publish-built-release.ps1")
+    require(bool(local_builder.strip()), "本機建置器內容不得為空。")
+    require("latest.json" in local_publisher and "build-result.json" in local_publisher, "本機發布器缺少建置結果或更新資訊處理。")
+    require('"release", "create"' in local_publisher and '"release", "upload"' in local_publisher, "本機發布器缺少建立或覆蓋 Release 的流程。")
 
     updater = tauri.get("plugins", {}).get("updater", {})
     require(tauri.get("bundle", {}).get("createUpdaterArtifacts") is True, "Tauri 必須產生簽章更新檔。")
@@ -122,10 +127,11 @@ def main() -> int:
         "SETUP_AUTO_UPDATE.bat", "PUBLISH_UPDATE.bat", "scripts/setup-auto-update.ps1",
         "scripts/publish-update.ps1", "scripts/configure-updater.py", "scripts/sync-release-version.py",
         "AUTO_UPDATE_SETUP.md", "START_HERE.txt", ".gitattributes",
+        "1_BUILD_AND_TEST.bat", "2_PUBLISH_RELEASE.bat", "scripts/publish-built-release.ps1",
     ):
         require((ROOT / relative).is_file(), f"缺少更新／發佈檔案：{relative}")
 
-    for batch in ("SETUP_AUTO_UPDATE.bat", "PUBLISH_UPDATE.bat", "BUILD_WINDOWS.bat"):
+    for batch in ("SETUP_AUTO_UPDATE.bat", "PUBLISH_UPDATE.bat", "BUILD_WINDOWS.bat", "1_BUILD_AND_TEST.bat", "2_PUBLISH_RELEASE.bat"):
         raw = (ROOT / batch).read_bytes()
         require(not raw.startswith(b"\xef\xbb\xbf"), f"{batch} 不得含 UTF-8 BOM。")
         require(b"\r\n" in raw, f"{batch} 必須使用 Windows CRLF 行尾。")
@@ -153,7 +159,15 @@ def main() -> int:
         "對話區必須以模型要求證據過濾使用者訊息與真實 AI 回覆。",
     )
     require("runAgentConversation" in studio and "production-meeting" in studio, "可交流的單一 Agent／製作會議缺失。")
-    require("agentRoster.map((agent) => agent.id)" in studio, "製作會議必須包含完整 AI 製片團隊。")
+    meeting_order = re.search(r"const productionMeetingOrder: AgentId\[\] = \[([\s\S]*?)\];", studio)
+    require(meeting_order is not None, "製作會議缺少明確執行順序。")
+    meeting_source = meeting_order.group(1)
+    expected_agents = (
+        "screenwriter", "art-director", "ip-designer", "character-designer",
+        "scene-designer", "storyboard-artist", "sound-director", "director",
+    )
+    require(all(f"'{agent}'" in meeting_source for agent in expected_agents), "製作會議必須包含完整 AI 製片團隊。")
+    require(meeting_source.rfind("'director'") > max(meeting_source.rfind(f"'{agent}'") for agent in expected_agents[:-1]), "總導演必須在其他成員完成後進行最後統整。")
     require("maximumCorrectionRounds" in studio and "returnToAgent" in strict_artifacts, "總導演退件與限次修正流程缺失。")
     require(
         "strictLocations(response.artifact, script)" in studio
@@ -164,6 +178,10 @@ def main() -> int:
     require("missingInformation" in agent_backend and "acknowledgement" in agent_backend, "Agent 任務確認契約缺失。")
     require("不得顯示私密思考過程" in agent_backend, "Agent 提示缺少思考過程保護。")
     require("fallback" not in agent_backend.lower(), "Agent 後端不得使用規則式 fallback 冒充模型。")
+    require("HTTP 400" in studio and "retryCount" in agent_backend and "max_completion_tokens" in agent_backend, "模型請求缺少 HTTP 400 相容性重試。")
+    require("conversation-progress" in production_view and "onRetryMessage" in production_view and "setMessage('')" in production_view, "對話介面缺少進度、清空輸入框或訊息重試。")
+    require((ROOT / "src-tauri/src/comfyui_manager.rs").is_file(), "缺少受管理的 AI 影片引擎。")
+    require((ROOT / "src-tauri/src/storage_manager.rs").is_file() and (ROOT / "src/studio/StoragePanel.tsx").is_file(), "缺少儲存空間與模型解除安裝功能。")
 
     require("validated_provider_snapshot" in video_backend and "configure_comfyui_provider" in video_backend, "影片模型服務設定與驗證缺失。")
     require(

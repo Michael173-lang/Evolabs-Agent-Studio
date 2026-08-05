@@ -23,7 +23,7 @@ export const agentRoster: Array<Pick<AgentMember, 'id' | 'name' | 'title' | 'sym
 ];
 
 const initialTasks: Array<Omit<AgentTask, 'id'>> = [
-  { agentId: 'screenwriter', title: '理解劇本', detail: '等待劇本與真實模型回覆', state: 'queued', progress: 0 },
+  { agentId: 'screenwriter', title: '理解劇本', detail: '等待劇本與模型回覆', state: 'queued', progress: 0 },
   { agentId: 'art-director', title: '建立視覺規範', detail: '等待編劇交付', state: 'queued', progress: 0 },
   { agentId: 'ip-designer', title: '建立世界與連戲規則', detail: '等待編劇交付', state: 'queued', progress: 0 },
   { agentId: 'character-designer', title: '建立角色身份資產', detail: '等待前序交付', state: 'queued', progress: 0 },

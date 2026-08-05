@@ -131,10 +131,10 @@ export default function StartView({
                 <Film size={20} />
                 <span>
                   <strong>AI 影片</strong>
-                  <small>每個鏡頭交由真正的影片模型生成；影片模型服務未就緒時不能開始。</small>
+                  <small>每個鏡頭交由 AI 影片模型生成；影片模型服務尚未可用時不能開始。</small>
                 </span>
                 <StatusPill tone={videoProvider.available ? 'good' : 'warning'}>
-                  {videoProvider.available ? '服務已連線' : '需要設定'}
+                  {videoProvider.available ? '服務已連線' : '尚未設定'}
                 </StatusPill>
               </button>
               <button
@@ -185,7 +185,7 @@ export default function StartView({
             {busy ? 'AI 編劇正在回覆' : '送交 AI 編劇'}
             {!busy && <ArrowRight size={18} />}
           </button>
-          {!agentReady && <p className="form-note form-note--danger">本機 AI 執行環境未連線時，Evolabs 不會使用預寫文案或規則式備援冒充 AI。</p>}
+          {!agentReady && <p className="form-note form-note--danger">本機 AI 執行環境未連線時，系統不會將預寫文案或規則式備援標示為 AI 回覆。</p>}
         </aside>
       </div>
     </div>
